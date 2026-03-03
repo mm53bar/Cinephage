@@ -31,8 +31,8 @@ export class VidlinkProvider extends BaseProvider {
 	readonly config: ProviderConfig = {
 		id: 'vidlink',
 		name: 'Vidlink',
-		priority: 5, // Higher than Videasy to try first (faster)
-		enabledByDefault: true,
+		priority: 45, // Lowered due to Cloudflare issues - try other providers first
+		enabledByDefault: false, // Disabled due to Cloudflare protection on streams
 		supportsMovies: true,
 		supportsTv: true,
 		supportsAnime: false,

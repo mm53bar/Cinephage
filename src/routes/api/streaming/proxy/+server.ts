@@ -32,6 +32,7 @@ import {
 	MAX_REDIRECTS
 } from '$lib/server/http/ssrf-protection';
 import { rewriteHlsPlaylistUrls } from '$lib/server/streaming/utils/hls-rewrite.js';
+import { getCachedSession } from '$lib/server/streaming/utils/cloudflare-streaming';
 
 const streamLog = { logCategory: 'streams' as const };
 
@@ -177,6 +178,22 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			'Accept-Encoding': 'identity',
 			Referer: referer
 		};
+
+		// Add cached Cloudflare cookies if available for this domain
+		try {
+			const domain = new URL(decodedUrl).hostname;
+			const cachedSession = getCachedSession(domain);
+			if (cachedSession) {
+				headers['Cookie'] = cachedSession.cookies;
+				headers['User-Agent'] = cachedSession.userAgent;
+				logger.debug('[Proxy] Using cached Cloudflare session', {
+					domain,
+					logCategory: 'streams'
+				});
+			}
+		} catch {
+			// Ignore URL parsing errors
+		}
 
 		// Follow redirects with loop protection
 		let currentUrl = decodedUrl;

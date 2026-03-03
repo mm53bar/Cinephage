@@ -7,6 +7,7 @@
 
 import { logger } from '$lib/logging';
 import { fetchWithTimeout } from './utils/http';
+import { fetchWithCloudflareBypass } from './utils/cloudflare-streaming';
 
 const streamLog = { logCategory: 'streams' as const };
 
@@ -286,14 +287,17 @@ export interface BestQualityResult {
  */
 export async function getBestQualityStreamUrl(
 	masterUrl: string,
-	referer: string
+	referer: string,
+	useCloudflareBypass: boolean = true
 ): Promise<BestQualityResult> {
 	try {
 		// Fetch the master playlist DIRECTLY (not through proxy - avoids loopback issues)
 		// Note: Don't send Origin header - some CDNs reject it
-		const response = await fetchWithTimeout(masterUrl, {
+		// Use Cloudflare bypass for streaming URLs that may be protected
+		const fetchFn = useCloudflareBypass ? fetchWithCloudflareBypass : fetchWithTimeout;
+		const response = await fetchFn(masterUrl, {
 			referer,
-			timeout: 8000,
+			timeout: 15000, // Increased timeout for Cloudflare bypass
 			headers: {
 				Accept: '*/*'
 			}

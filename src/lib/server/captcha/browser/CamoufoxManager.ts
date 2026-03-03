@@ -103,6 +103,9 @@ export class CamoufoxManager {
 		headless: boolean;
 		proxy?: ProxyConfig;
 	}): Promise<ManagedBrowser> {
+		// Wait for availability check to complete before checking isAvailable
+		await this.waitForAvailabilityCheck();
+
 		if (!this.isAvailable) {
 			throw new Error(`Camoufox not available: ${this.availabilityError || 'unknown error'}`);
 		}

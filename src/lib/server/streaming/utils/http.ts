@@ -12,6 +12,7 @@ import {
 import type { StreamSubtitle } from '../types/stream';
 import { injectSubtitles, isMasterPlaylist } from './subtitle-injection';
 import { rewriteHlsPlaylistUrls } from './hls-rewrite.js';
+import { fetchWithCloudflareBypass } from './cloudflare-streaming';
 
 export interface FetchOptions {
 	/** Request timeout in milliseconds */
@@ -273,9 +274,10 @@ export async function fetchAndRewritePlaylist(
 ): Promise<Response> {
 	// Fetch the playlist directly with proper headers
 	// Note: Don't send Origin header - some CDNs reject it
-	const response = await fetchWithTimeout(playlistUrl, {
+	// Use Cloudflare bypass for streaming URLs
+	const response = await fetchWithCloudflareBypass(playlistUrl, {
 		referer,
-		timeout: 8000,
+		timeout: 15000, // Increased timeout for Cloudflare bypass
 		headers: {
 			Accept: '*/*'
 		}

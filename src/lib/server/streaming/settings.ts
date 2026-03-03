@@ -149,7 +149,7 @@ const PROVIDER_TOGGLES: Array<{
 	enabledByDefault: boolean;
 }> = [
 	{ id: 'videasy', settingsKey: 'enableVideasy', enabledByDefault: true },
-	{ id: 'vidlink', settingsKey: 'enableVidlink', enabledByDefault: true },
+	{ id: 'vidlink', settingsKey: 'enableVidlink', enabledByDefault: false }, // Disabled due to Cloudflare protection
 	{ id: 'xprime', settingsKey: 'enableXprime', enabledByDefault: false },
 	{ id: 'smashy', settingsKey: 'enableSmashy', enabledByDefault: false },
 	{ id: 'hexa', settingsKey: 'enableHexa', enabledByDefault: true },
@@ -262,8 +262,8 @@ export function getAllProviders(): Array<{
 		{
 			id: 'vidlink',
 			name: 'Vidlink',
-			enabledByDefault: true,
-			description: 'Simple and fast provider'
+			enabledByDefault: false,
+			description: 'Simple and fast provider (DISABLED: Cloudflare protection)'
 		},
 		{
 			id: 'xprime',

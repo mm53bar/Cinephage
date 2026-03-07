@@ -17,7 +17,11 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 RUN npm ci
 
-COPY . .
+COPY src ./src
+COPY static ./static
+COPY data ./data
+COPY scripts/fix-tv-subtitle-paths.js scripts/reset-admin-password.js ./scripts/
+COPY server.js svelte.config.js tsconfig.json vite.config.ts ./
 
 ARG APP_VERSION=dev
 ENV PUBLIC_APP_VERSION=${APP_VERSION}
@@ -31,13 +35,7 @@ FROM node:24-trixie-slim AS runner
 WORKDIR /app
 
 ARG APP_VERSION=dev
-ARG CINEPHAGE_COMMIT=''
-ARG CINEPHAGE_VERSION=''
-ARG CINEPHAGE_CLIENT_KEY=''
 ENV PUBLIC_APP_VERSION=${APP_VERSION}
-ENV CINEPHAGE_COMMIT=${CINEPHAGE_COMMIT} \
-    CINEPHAGE_VERSION=${CINEPHAGE_VERSION} \
-    CINEPHAGE_CLIENT_KEY=${CINEPHAGE_CLIENT_KEY}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	wget \

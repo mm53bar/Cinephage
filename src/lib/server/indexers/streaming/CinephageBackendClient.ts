@@ -198,16 +198,8 @@ function normalizeSource(entry: unknown, apiBaseUrl: string): StreamSource | nul
 		getFirstString(entry.quality, entry.label, entry.resolution, entry.name, entry.title) ?? 'Auto';
 	const server = getFirstString(entry.server, entry.source, entry.sourceName, entry.name);
 	const provider = getFirstString(entry.provider, entry.providerId, entry.backend) ?? 'cinephage';
-	const language = getFirstString(
-		entry.language,
-		entry.audioLanguage,
-		entry.audioLang,
-		entry.lang
-	);
-	const type = normalizeStreamType(
-		getFirstString(entry.type, entry.streamType, entry.format),
-		url
-	);
+	const language = getFirstString(entry.language, entry.audioLanguage, entry.audioLang, entry.lang);
+	const type = normalizeStreamType(getFirstString(entry.type, entry.streamType, entry.format), url);
 
 	return {
 		quality,

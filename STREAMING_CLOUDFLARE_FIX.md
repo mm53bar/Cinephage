@@ -3,6 +3,7 @@
 ## What Was Implemented
 
 ### 1. Cloudflare-aware Streaming Module
+
 **File**: `src/lib/server/streaming/utils/cloudflare-streaming.ts`
 
 - Detects Cloudflare protection on streaming URLs
@@ -11,18 +12,21 @@
 - Reuses cached sessions for subsequent requests (playlists + segments)
 
 ### 2. Updated HLS Utilities
+
 **File**: `src/lib/server/streaming/hls.ts`
 
 - `getBestQualityStreamUrl()` now uses `fetchWithCloudflareBypass`
 - Increased timeout from 8s to 15s for Cloudflare bypass
 
 ### 3. Updated Playlist Fetching
+
 **File**: `src/lib/server/streaming/utils/http.ts`
 
 - `fetchAndRewritePlaylist()` now uses `fetchWithCloudflareBypass`
 - Automatically handles Cloudflare-protected playlists
 
 ### 4. Updated Proxy Endpoint
+
 **File**: `src/routes/api/streaming/proxy/+server.ts`
 
 - Proxy now checks for cached Cloudflare sessions
@@ -68,11 +72,13 @@ npx camoufox-js fetch
 ## Testing
 
 Run the test:
+
 ```bash
 npx vitest run src/lib/server/streaming/utils/cloudflare-streaming.test.ts
 ```
 
 The test shows:
+
 - Cloudflare detection is working ✅
 - Falls back to browser fetch ✅
 - Browser fetch fails because Camoufox not installed ❌

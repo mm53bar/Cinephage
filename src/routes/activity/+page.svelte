@@ -8,6 +8,7 @@
 	import ActivityDetailModal from '$lib/components/activity/ActivityDetailModal.svelte';
 	import ActivityFilters from '$lib/components/activity/ActivityFilters.svelte';
 	import ActiveFilters from '$lib/components/activity/ActiveFilters.svelte';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import type {
 		UnifiedActivity,
 		ActivityDetails,
@@ -16,12 +17,25 @@
 	} from '$lib/types/activity';
 	import type { ActivityStreamEvents } from '$lib/types/sse/events/activity-events.js';
 	import { Activity, Loader2, Wifi, WifiOff } from 'lucide-svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	let { data } = $props();
 
 	// Local state for activities (for SSE updates)
 	let activities = $state<UnifiedActivity[]>([]);
 	let total = $state(0);
+	let selectionMode = $state(false);
+	let selectedHistoryIds = $state<string[]>([]);
+	let canManageHistory = $state(false);
+	let retentionDays = $state(90);
+	let settingsLoading = $state(true);
+	let saveRetentionLoading = $state(false);
+	let purgeOlderLoading = $state(false);
+	let purgeAllLoading = $state(false);
+	let deleteSelectedLoading = $state(false);
+	type HistoryConfirmAction = 'purge_older_than_retention' | 'purge_all' | 'delete_selected';
+	let historyConfirmOpen = $state(false);
+	let historyConfirmAction = $state<HistoryConfirmAction | null>(null);
 
 	// Filter state - initialize from URL/data
 	let filters = $state<FiltersType>({
@@ -40,6 +54,62 @@
 
 	let hasInitialized = $state(false);
 	let refreshInFlight = $state(false);
+
+	function isHistoryActivity(activity: UnifiedActivity): boolean {
+		const isHistoryRow =
+			activity.id.startsWith('history-') || activity.id.startsWith('monitoring-');
+		if (!isHistoryRow) return false;
+
+		// Keep failed activities retryable via queue actions; don't allow bulk-delete selection.
+		if (activity.status === 'failed' && activity.queueItemId) return false;
+
+		return true;
+	}
+
+	function toggleSelectionMode(): void {
+		selectionMode = !selectionMode;
+		if (!selectionMode) {
+			selectedHistoryIds = [];
+		}
+	}
+
+	function handleToggleSelection(activityId: string, selected: boolean): void {
+		if (selected) {
+			if (!selectedHistoryIds.includes(activityId)) {
+				selectedHistoryIds = [...selectedHistoryIds, activityId];
+			}
+		} else {
+			selectedHistoryIds = selectedHistoryIds.filter((id) => id !== activityId);
+		}
+	}
+
+	function handleToggleSelectionAll(activityIds: string[], selected: boolean): void {
+		if (selected) {
+			const merged = [...selectedHistoryIds];
+			for (const id of activityIds) {
+				if (!merged.includes(id)) {
+					merged.push(id);
+				}
+			}
+			selectedHistoryIds = merged;
+			return;
+		}
+
+		selectedHistoryIds = selectedHistoryIds.filter((id) => !activityIds.includes(id));
+	}
+
+	function reconcileSelectedHistoryIds(sourceActivities: UnifiedActivity[]): void {
+		const next = selectedHistoryIds.filter((id) =>
+			sourceActivities.some((activity) => activity.id === id && isHistoryActivity(activity))
+		);
+		if (
+			next.length === selectedHistoryIds.length &&
+			next.every((id, i) => id === selectedHistoryIds[i])
+		) {
+			return;
+		}
+		selectedHistoryIds = next;
+	}
 
 	function normalizeActivityStatus(status: unknown): ActivityStatus {
 		switch (status) {
@@ -214,7 +284,7 @@
 			if (new Date(activity.startedAt).getTime() < startTime) return false;
 		}
 		if (filters.endDate) {
-			const endTime = new Date(filters.endDate).getTime();
+			const endTime = new Date(filters.endDate).getTime() + 86_399_999;
 			if (new Date(activity.startedAt).getTime() > endTime) return false;
 		}
 
@@ -265,10 +335,15 @@
 	$effect(() => {
 		activities = data.activities;
 		total = data.total;
+		reconcileSelectedHistoryIds(data.activities);
 		if (!hasInitialized && data.filters) {
 			filters = { ...data.filters };
 			hasInitialized = true;
 		}
+	});
+
+	$effect(() => {
+		reconcileSelectedHistoryIds(activities);
 	});
 
 	// SSE Connection - internally handles browser/SSR
@@ -300,6 +375,9 @@
 			if (removed) {
 				total = Math.max(0, total - 1);
 			}
+		},
+		'activity:refresh': () => {
+			void refreshActivityData();
 		}
 	});
 
@@ -313,9 +391,35 @@
 		}
 	}
 
+	async function loadHistorySettings(): Promise<void> {
+		settingsLoading = true;
+		try {
+			const response = await fetch('/api/activity/settings');
+			if (response.status === 401 || response.status === 403) {
+				canManageHistory = false;
+				return;
+			}
+			if (!response.ok) {
+				throw new Error('Failed to load history settings');
+			}
+
+			const payload = await response.json();
+			if (payload.success && typeof payload.retentionDays === 'number') {
+				retentionDays = payload.retentionDays;
+			}
+			canManageHistory = true;
+		} catch (error) {
+			console.error('Failed to load history settings:', error);
+			canManageHistory = false;
+		} finally {
+			settingsLoading = false;
+		}
+	}
+
 	onMount(() => {
 		// Ensure we don't show stale client-side snapshot state after route back/forward.
 		void refreshActivityData();
+		void loadHistorySettings();
 
 		const handleFocus = () => {
 			void refreshActivityData();
@@ -341,6 +445,238 @@
 			window.removeEventListener('pageshow', handlePageShow);
 		};
 	});
+
+	async function saveRetention(): Promise<void> {
+		if (!canManageHistory || saveRetentionLoading) return;
+
+		saveRetentionLoading = true;
+		try {
+			const response = await fetch('/api/activity/settings', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ retentionDays })
+			});
+			if (response.status === 401 || response.status === 403) {
+				canManageHistory = false;
+				throw new Error('Admin access is required');
+			}
+
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.success) {
+				throw new Error(
+					typeof payload.error === 'string' ? payload.error : 'Failed to save retention setting'
+				);
+			}
+
+			retentionDays = payload.retentionDays ?? retentionDays;
+			toasts.success(`Retention updated to ${retentionDays} day${retentionDays === 1 ? '' : 's'}`);
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : 'Failed to save retention setting');
+		} finally {
+			saveRetentionLoading = false;
+		}
+	}
+
+	const historyConfirmTitle = $derived.by((): string => {
+		switch (historyConfirmAction) {
+			case 'purge_all':
+				return 'Purge All Activity History';
+			case 'purge_older_than_retention':
+				return 'Purge Older Activity History';
+			case 'delete_selected':
+				return 'Delete Selected History';
+			default:
+				return 'Confirm Action';
+		}
+	});
+
+	const historyConfirmMessage = $derived.by((): string => {
+		switch (historyConfirmAction) {
+			case 'purge_all':
+				return 'Permanently delete all activity history? This cannot be undone.';
+			case 'purge_older_than_retention':
+				return `Delete activity history older than ${retentionDays} days? This cannot be undone.`;
+			case 'delete_selected':
+				return `Delete ${selectedHistoryIds.length} selected history row${selectedHistoryIds.length === 1 ? '' : 's'}? This cannot be undone.`;
+			default:
+				return '';
+		}
+	});
+
+	const historyConfirmLabel = $derived.by((): string => {
+		switch (historyConfirmAction) {
+			case 'purge_all':
+				return 'Purge All';
+			case 'purge_older_than_retention':
+				return 'Purge Older';
+			case 'delete_selected':
+				return 'Delete Selected';
+			default:
+				return 'Confirm';
+		}
+	});
+
+	const historyConfirmLoading = $derived.by((): boolean => {
+		switch (historyConfirmAction) {
+			case 'purge_all':
+				return purgeAllLoading;
+			case 'purge_older_than_retention':
+				return purgeOlderLoading;
+			case 'delete_selected':
+				return deleteSelectedLoading;
+			default:
+				return false;
+		}
+	});
+
+	function openHistoryConfirm(action: HistoryConfirmAction): void {
+		if (!canManageHistory) return;
+		if (action === 'purge_all' && (settingsLoading || purgeAllLoading)) return;
+		if (action === 'purge_older_than_retention' && (settingsLoading || purgeOlderLoading)) return;
+		if (action === 'delete_selected' && (deleteSelectedLoading || selectedHistoryIds.length === 0))
+			return;
+
+		historyConfirmAction = action;
+		historyConfirmOpen = true;
+	}
+
+	function closeHistoryConfirm(): void {
+		if (historyConfirmLoading) return;
+		historyConfirmOpen = false;
+		historyConfirmAction = null;
+	}
+
+	async function handleHistoryConfirm(): Promise<void> {
+		if (!historyConfirmAction || historyConfirmLoading) return;
+
+		if (historyConfirmAction === 'purge_all') {
+			await purgeHistory('all');
+		} else if (historyConfirmAction === 'purge_older_than_retention') {
+			await purgeHistory('older_than_retention');
+		} else {
+			await deleteSelectedHistory();
+		}
+
+		historyConfirmOpen = false;
+		historyConfirmAction = null;
+	}
+
+	async function purgeHistory(action: 'older_than_retention' | 'all'): Promise<void> {
+		if (!canManageHistory) return;
+		if (action === 'older_than_retention' && purgeOlderLoading) return;
+		if (action === 'all' && purgeAllLoading) return;
+
+		if (action === 'all') {
+			purgeAllLoading = true;
+		} else {
+			purgeOlderLoading = true;
+		}
+
+		try {
+			const response = await fetch('/api/activity/settings', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action })
+			});
+			if (response.status === 401 || response.status === 403) {
+				canManageHistory = false;
+				throw new Error('Admin access is required');
+			}
+
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.success) {
+				throw new Error(
+					typeof payload.error === 'string' ? payload.error : 'Failed to purge activity entries'
+				);
+			}
+
+			const totalDeleted =
+				typeof payload.totalDeleted === 'number'
+					? payload.totalDeleted
+					: (payload.deletedDownloadHistory ?? 0) + (payload.deletedMonitoringHistory ?? 0);
+			toasts.success(
+				`Deleted ${totalDeleted} activity ${totalDeleted === 1 ? 'entry' : 'entries'}`
+			);
+			selectedHistoryIds = [];
+		} catch (error) {
+			toasts.error(error instanceof Error ? error.message : 'Failed to purge activity entries');
+			return;
+		}
+
+		try {
+			await refreshActivityData();
+		} catch (error) {
+			console.error('Activity refresh failed after purge:', error);
+			toasts.info('Purge completed. Activity list will refresh shortly.');
+		} finally {
+			purgeOlderLoading = false;
+			purgeAllLoading = false;
+		}
+	}
+
+	async function deleteSelectedHistory(): Promise<void> {
+		if (!canManageHistory || deleteSelectedLoading || selectedHistoryIds.length === 0) return;
+
+		deleteSelectedLoading = true;
+		try {
+			const response = await fetch('/api/activity', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ activityIds: selectedHistoryIds })
+			});
+			if (response.status === 401 || response.status === 403) {
+				canManageHistory = false;
+				throw new Error('Admin access is required');
+			}
+
+			const payload = await response.json().catch(() => ({}));
+			if (!response.ok || !payload.success) {
+				throw new Error(
+					typeof payload.error === 'string'
+						? payload.error
+						: 'Failed to delete selected activity entries'
+				);
+			}
+
+			const totalDeleted =
+				typeof payload.totalDeleted === 'number'
+					? payload.totalDeleted
+					: (payload.deletedDownloadHistory ?? 0) + (payload.deletedMonitoringHistory ?? 0);
+			const skippedQueue = typeof payload.skippedQueue === 'number' ? payload.skippedQueue : 0;
+			const skippedRetryableFailed =
+				typeof payload.skippedRetryableFailed === 'number' ? payload.skippedRetryableFailed : 0;
+
+			toasts.success(
+				`Deleted ${totalDeleted} activity ${totalDeleted === 1 ? 'entry' : 'entries'}`
+			);
+			if (skippedQueue > 0) {
+				toasts.info(
+					`${skippedQueue} active download ${skippedQueue === 1 ? 'item was' : 'items were'} skipped (use queue actions to remove them)`
+				);
+			}
+			if (skippedRetryableFailed > 0) {
+				toasts.info(
+					`${skippedRetryableFailed} failed activity ${skippedRetryableFailed === 1 ? 'entry was' : 'entries were'} kept because retry is still available`
+				);
+			}
+
+			selectedHistoryIds = [];
+		} catch (error) {
+			toasts.error(
+				error instanceof Error ? error.message : 'Failed to delete selected activity entries'
+			);
+			return;
+		}
+
+		try {
+			await refreshActivityData();
+		} catch (error) {
+			console.error('Activity refresh failed after delete selected:', error);
+			toasts.info('Delete completed. Activity list will refresh shortly.');
+		} finally {
+			deleteSelectedLoading = false;
+		}
+	}
 
 	// Apply filters via URL navigation
 	async function applyFilters(newFilters: FiltersType) {
@@ -566,21 +902,96 @@
 		</div>
 	</div>
 
-	<!-- Filters Component -->
+	<!-- Unified Toolbar -->
 	<ActivityFilters
 		{filters}
 		filterOptions={data.filterOptions}
 		onFiltersChange={applyFilters}
 		onClearFilters={clearAllFilters}
-	/>
+		showActiveFilters={true}
+		showHistoryControls={canManageHistory}
+	>
+		{#snippet activeFiltersContent()}
+			<ActiveFilters
+				{filters}
+				downloadClients={data.filterOptions.downloadClients}
+				onFilterRemove={removeFilter}
+				onClearAll={clearAllFilters}
+			/>
+		{/snippet}
 
-	<!-- Active Filters Display -->
-	<ActiveFilters
-		{filters}
-		downloadClients={data.filterOptions.downloadClients}
-		onFilterRemove={removeFilter}
-		onClearAll={clearAllFilters}
-	/>
+		{#snippet historyControlsContent()}
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-sm font-bold tracking-wide text-base-content/70">History Management</span>
+				<div class="divider m-0 divider-horizontal h-6"></div>
+				<label class="flex items-center gap-2 text-sm">
+					<span class="text-base-content/70">Retention:</span>
+					<select
+						class="select-bordered select select-xs"
+						bind:value={retentionDays}
+						disabled={settingsLoading}
+					>
+						<option value={7}>7 days</option>
+						<option value={14}>14 days</option>
+						<option value={30}>30 days</option>
+						<option value={60}>60 days</option>
+						<option value={90}>90 days</option>
+					</select>
+				</label>
+				<div class="divider m-0 divider-horizontal h-6"></div>
+				<button
+					class="btn btn-xs"
+					onclick={saveRetention}
+					disabled={settingsLoading || saveRetentionLoading}
+				>
+					{#if saveRetentionLoading}
+						<Loader2 class="h-3 w-3 animate-spin" />
+					{/if}
+					Save
+				</button>
+				<button
+					class="btn btn-xs"
+					onclick={() => openHistoryConfirm('purge_older_than_retention')}
+					disabled={settingsLoading || purgeOlderLoading}
+				>
+					{#if purgeOlderLoading}
+						<Loader2 class="h-3 w-3 animate-spin" />
+					{/if}
+					Purge Older
+				</button>
+				<button class="btn btn-ghost btn-xs" onclick={toggleSelectionMode}>
+					{selectionMode ? 'Exit Selection' : 'Select Rows'}
+				</button>
+				{#if selectionMode}
+					<button
+						class="btn btn-xs btn-error"
+						onclick={() => openHistoryConfirm('delete_selected')}
+						disabled={deleteSelectedLoading || selectedHistoryIds.length === 0}
+					>
+						{#if deleteSelectedLoading}
+							<Loader2 class="h-3 w-3 animate-spin" />
+						{/if}
+						Delete Selected ({selectedHistoryIds.length})
+					</button>
+				{/if}
+				<div class="ml-auto"></div>
+				<button
+					class="btn btn-xs btn-error"
+					onclick={() => openHistoryConfirm('purge_all')}
+					disabled={settingsLoading || purgeAllLoading}
+				>
+					{#if purgeAllLoading}
+						<Loader2 class="h-3 w-3 animate-spin" />
+					{/if}
+					Purge All
+				</button>
+			</div>
+			<p class="mt-2 text-xs text-base-content/60">
+				Bulk delete applies to history rows (`history-*` and `monitoring-*`). Active queue items and
+				retryable failed activities are managed through queue actions.
+			</p>
+		{/snippet}
+	</ActivityFilters>
 
 	<!-- Activity Stats -->
 	<div class="flex items-center gap-4 text-sm text-base-content/70">
@@ -603,12 +1014,17 @@
 			{activities}
 			{sortField}
 			{sortDirection}
+			{selectionMode}
+			selectedIds={selectedHistoryIds}
+			isSelectable={isHistoryActivity}
 			onSort={handleSort}
 			onRowClick={openDetailModal}
 			onPause={handlePause}
 			onResume={handleResume}
 			onRemove={handleRemove}
 			onRetry={handleRetry}
+			onToggleSelection={handleToggleSelection}
+			onToggleSelectionAll={handleToggleSelectionAll}
 		/>
 
 		<!-- Load More -->
@@ -624,6 +1040,17 @@
 		{/if}
 	{/if}
 </div>
+
+<ConfirmationModal
+	open={historyConfirmOpen}
+	title={historyConfirmTitle}
+	message={historyConfirmMessage}
+	confirmLabel={historyConfirmLabel}
+	confirmVariant="error"
+	loading={historyConfirmLoading}
+	onConfirm={handleHistoryConfirm}
+	onCancel={closeHistoryConfirm}
+/>
 
 <!-- Detail Modal -->
 {#if isModalOpen && selectedActivity}

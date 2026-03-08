@@ -35,6 +35,11 @@
 		onRemove?: (id: string) => Promise<void>;
 		onRetry?: (id: string) => Promise<void>;
 		compact?: boolean;
+		selectionMode?: boolean;
+		selectedIds?: string[];
+		isSelectable?: (activity: UnifiedActivity) => boolean;
+		onToggleSelection?: (activityId: string, selected: boolean) => void;
+		onToggleSelectionAll?: (activityIds: string[], selected: boolean) => void;
 	}
 
 	let {
@@ -47,13 +52,37 @@
 		onResume,
 		onRemove,
 		onRetry,
-		compact = false
+		compact = false,
+		selectionMode = false,
+		selectedIds = [],
+		isSelectable = () => false,
+		onToggleSelection,
+		onToggleSelectionAll
 	}: Props = $props();
 
 	// Track expanded rows
 	let expandedRows = new SvelteSet<string>();
 	let failedReasonExpandedRows = new SvelteSet<string>();
 	let queueActionLoadingRows = new SvelteSet<string>();
+	let selectAllCheckbox = $state<HTMLInputElement | null>(null);
+
+	const selectableIds = $derived.by(() =>
+		selectionMode
+			? activities.filter((activity) => isSelectable(activity)).map((activity) => activity.id)
+			: []
+	);
+	const allSelectableSelected = $derived.by(
+		() => selectableIds.length > 0 && selectableIds.every((id) => selectedIds.includes(id))
+	);
+	const someSelectableSelected = $derived.by(
+		() => selectableIds.some((id) => selectedIds.includes(id)) && !allSelectableSelected
+	);
+
+	$effect(() => {
+		if (selectAllCheckbox) {
+			selectAllCheckbox.indeterminate = someSelectableSelected;
+		}
+	});
 
 	function toggleRow(id: string) {
 		if (expandedRows.has(id)) {
@@ -193,6 +222,24 @@
 			queueActionLoadingRows.delete(activity.id);
 		}
 	}
+
+	function isRowSelected(activityId: string): boolean {
+		return selectedIds.includes(activityId);
+	}
+
+	function toggleSelection(activity: UnifiedActivity, selected: boolean): void {
+		if (!selectionMode || !isSelectable(activity)) {
+			return;
+		}
+		onToggleSelection?.(activity.id, selected);
+	}
+
+	function toggleSelectionAll(selected: boolean): void {
+		if (!selectionMode || selectableIds.length === 0) {
+			return;
+		}
+		onToggleSelectionAll?.(selectableIds, selected);
+	}
 </script>
 
 {#if activities.length === 0}
@@ -224,9 +271,24 @@
 							{config.label}
 						{/if}
 					</span>
-					<span class="text-xs text-base-content/60" title={activity.startedAt}>
-						{formatRelativeTime(activity.startedAt)}
-					</span>
+					<div class="flex items-center gap-2">
+						<span class="text-xs text-base-content/60" title={activity.startedAt}>
+							{formatRelativeTime(activity.startedAt)}
+						</span>
+						{#if selectionMode}
+							<input
+								type="checkbox"
+								class="checkbox checkbox-xs"
+								checked={isRowSelected(activity.id)}
+								disabled={!isSelectable(activity)}
+								aria-label={`Select ${activity.mediaTitle}`}
+								onclick={(e) => {
+									e.stopPropagation();
+									toggleSelection(activity, (e.currentTarget as HTMLInputElement).checked);
+								}}
+							/>
+						{/if}
+					</div>
 				</div>
 
 				<div class="mt-2">
@@ -409,6 +471,23 @@
 		<table class="table table-sm">
 			<thead>
 				<tr>
+					{#if selectionMode}
+						<th class="w-10">
+							{#if selectableIds.length > 0}
+								<input
+									bind:this={selectAllCheckbox}
+									type="checkbox"
+									class="checkbox checkbox-xs"
+									checked={allSelectableSelected}
+									aria-label="Select all visible history rows"
+									onclick={(e) => {
+										e.stopPropagation();
+										toggleSelectionAll(!allSelectableSelected);
+									}}
+								/>
+							{/if}
+						</th>
+					{/if}
 					<th class="w-10"></th>
 					<th
 						class="cursor-pointer select-none hover:bg-base-200"
@@ -493,6 +572,21 @@
 							}
 						}}
 					>
+						{#if selectionMode}
+							<td class="w-10">
+								<input
+									type="checkbox"
+									class="checkbox checkbox-xs"
+									checked={isRowSelected(activity.id)}
+									disabled={!isSelectable(activity)}
+									aria-label={`Select ${activity.mediaTitle}`}
+									onclick={(e) => {
+										e.stopPropagation();
+										toggleSelection(activity, (e.currentTarget as HTMLInputElement).checked);
+									}}
+								/>
+							</td>
+						{/if}
 						<!-- Expand indicator -->
 						<td class="w-10">
 							{#if (activity.timeline?.length ?? 0) > 0}
@@ -650,7 +744,7 @@
 					<!-- Expanded row with timeline -->
 					{#if isExpanded && (activity.timeline?.length ?? 0) > 0}
 						<tr class="bg-base-200/50">
-							<td colspan={compact ? 5 : 10} class="py-3">
+							<td colspan={(compact ? 5 : 10) + (selectionMode ? 1 : 0)} class="py-3">
 								<div class="px-4">
 									<div class="mb-2 text-sm font-medium">Timeline</div>
 									<div class="flex flex-wrap items-center gap-2 text-xs">

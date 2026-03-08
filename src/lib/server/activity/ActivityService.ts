@@ -7,9 +7,10 @@ import {
 	series,
 	episodes,
 	activityDetails,
-	movieFiles
+	movieFiles,
+	settings
 } from '$lib/server/db/schema';
-import { desc, inArray, eq } from 'drizzle-orm';
+import { desc, inArray, eq, lt } from 'drizzle-orm';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
 import { parseRelease } from '$lib/server/indexers/parser/ReleaseParser';
 import type {
@@ -56,6 +57,26 @@ interface ActivityQueryResult {
 	hasMore: boolean;
 }
 
+const ACTIVITY_RETENTION_SETTINGS_KEY = 'activity_history_retention_days';
+export const DEFAULT_ACTIVITY_RETENTION_DAYS = 90;
+export const MAX_ACTIVITY_RETENTION_DAYS = 90;
+const MIN_ACTIVITY_RETENTION_DAYS = 1;
+
+interface DeleteHistoryResult {
+	deletedDownloadHistory: number;
+	deletedMonitoringHistory: number;
+	skippedQueue: number;
+	skippedUnknown: number;
+	skippedRetryableFailed: number;
+}
+
+interface PurgeHistoryResult {
+	deletedDownloadHistory: number;
+	deletedMonitoringHistory: number;
+	totalDeleted: number;
+	cutoff?: string;
+}
+
 /**
  * Service for managing and querying activity data
  * Consolidates download queue, history, and monitoring history into unified activities
@@ -80,17 +101,10 @@ export class ActivityService {
 		sort: ActivitySortOptions = { field: 'time', direction: 'desc' },
 		pagination: PaginationOptions = { limit: 50, offset: 0 }
 	): Promise<ActivityQueryResult> {
-		// Determine if we can use smaller fetch limits. When there are no non-trivial
-		// filters and we only need a small number of items sorted by time desc, we can
-		// reduce the amount of history/monitoring rows fetched from the DB.
-		const hasFilters = this.hasNonTrivialFilters(filters);
-		const isSimpleLatest =
-			!hasFilters && sort.field === 'time' && sort.direction === 'desc' && pagination.offset === 0;
-
-		// When doing a simple "latest N" without filters, fetch a modest overshoot
-		// to account for dedup/skipping, but much less than the full 200+100 defaults.
-		const historyFetchLimit = isSimpleLatest ? Math.min(pagination.limit * 3, 200) : 200;
-		const monitoringFetchLimit = isSimpleLatest ? Math.min(pagination.limit * 2, 100) : 100;
+		// Keep a consistent fetch window so total counts do not change unexpectedly
+		// between equivalent views (e.g. no filter vs date presets).
+		const historyFetchLimit = 200;
+		const monitoringFetchLimit = 100;
 
 		// Fetch data from all three sources
 		const [activeDownloads, historyItems, monitoringItems, failedQueueItems] = await Promise.all([
@@ -131,6 +145,178 @@ export class ActivityService {
 			activities: paginated,
 			total,
 			hasMore: pagination.offset + paginated.length < total
+		};
+	}
+
+	async getRetentionDays(): Promise<number> {
+		const row = await db
+			.select({ value: settings.value })
+			.from(settings)
+			.where(eq(settings.key, ACTIVITY_RETENTION_SETTINGS_KEY))
+			.get();
+		return this.parseRetentionDays(row?.value);
+	}
+
+	async setRetentionDays(days: number): Promise<number> {
+		const normalized = this.parseRetentionDays(days);
+		await db
+			.insert(settings)
+			.values({
+				key: ACTIVITY_RETENTION_SETTINGS_KEY,
+				value: String(normalized)
+			})
+			.onConflictDoUpdate({
+				target: settings.key,
+				set: { value: String(normalized) }
+			});
+		return normalized;
+	}
+
+	async deleteHistoryActivities(activityIds: string[]): Promise<DeleteHistoryResult> {
+		const historyIds = new Set<string>();
+		const monitoringIds = new Set<string>();
+		let skippedQueue = 0;
+		let skippedUnknown = 0;
+
+		for (const rawId of activityIds) {
+			const id = rawId.trim();
+			if (!id) {
+				continue;
+			}
+
+			if (id.startsWith('history-')) {
+				const historyId = id.slice('history-'.length).trim();
+				if (historyId) {
+					historyIds.add(historyId);
+				}
+				continue;
+			}
+
+			if (id.startsWith('monitoring-')) {
+				const monitoringId = id.slice('monitoring-'.length).trim();
+				if (monitoringId) {
+					monitoringIds.add(monitoringId);
+				}
+				continue;
+			}
+
+			if (id.startsWith('queue-')) {
+				skippedQueue += 1;
+				continue;
+			}
+
+			skippedUnknown += 1;
+		}
+
+		const historyIdList = Array.from(historyIds);
+		const monitoringIdList = Array.from(monitoringIds);
+		let eligibleHistoryIdList = historyIdList;
+		let skippedRetryableFailed = 0;
+
+		if (historyIdList.length > 0) {
+			const requestedHistoryRows = await db
+				.select({
+					id: downloadHistory.id,
+					status: downloadHistory.status,
+					downloadId: downloadHistory.downloadId,
+					title: downloadHistory.title,
+					grabbedAt: downloadHistory.grabbedAt
+				})
+				.from(downloadHistory)
+				.where(inArray(downloadHistory.id, historyIdList))
+				.all();
+
+			const failedQueueIndex = this.buildFailedQueueIndex(await this.fetchFailedQueueItems());
+			const protectedHistoryIds = new Set<string>();
+
+			for (const row of requestedHistoryRows) {
+				if (row.status !== 'failed') continue;
+
+				const byDownloadId = row.downloadId
+					? failedQueueIndex.get(`download:${row.downloadId}`)
+					: undefined;
+				const byTitleGrabbed =
+					!byDownloadId && row.title && row.grabbedAt
+						? failedQueueIndex.get(`title:${row.title.toLowerCase()}|grabbed:${row.grabbedAt}`)
+						: undefined;
+
+				if (byDownloadId || byTitleGrabbed) {
+					protectedHistoryIds.add(row.id);
+				}
+			}
+
+			skippedRetryableFailed = protectedHistoryIds.size;
+			eligibleHistoryIdList = historyIdList.filter((id) => !protectedHistoryIds.has(id));
+		}
+
+		const { deletedDownloadHistory, deletedMonitoringHistory } = await db.transaction((tx) => {
+			const deletedDownloadHistory =
+				eligibleHistoryIdList.length > 0
+					? tx
+							.delete(downloadHistory)
+							.where(inArray(downloadHistory.id, eligibleHistoryIdList))
+							.run().changes
+					: 0;
+
+			const deletedMonitoringHistory =
+				monitoringIdList.length > 0
+					? tx
+							.delete(monitoringHistory)
+							.where(inArray(monitoringHistory.id, monitoringIdList))
+							.run().changes
+					: 0;
+
+			return { deletedDownloadHistory, deletedMonitoringHistory };
+		});
+
+		return {
+			deletedDownloadHistory,
+			deletedMonitoringHistory,
+			skippedQueue,
+			skippedUnknown,
+			skippedRetryableFailed
+		};
+	}
+
+	async purgeHistoryOlderThan(retentionDays: number): Promise<PurgeHistoryResult> {
+		const normalizedRetentionDays = this.parseRetentionDays(retentionDays);
+		const cutoffDate = new Date();
+		cutoffDate.setDate(cutoffDate.getDate() - normalizedRetentionDays);
+		const cutoffIso = cutoffDate.toISOString();
+
+		const { deletedDownloadHistory, deletedMonitoringHistory } = await db.transaction((tx) => {
+			const deletedDownloadHistory = tx
+				.delete(downloadHistory)
+				.where(lt(downloadHistory.createdAt, cutoffIso))
+				.run().changes;
+			const deletedMonitoringHistory = tx
+				.delete(monitoringHistory)
+				.where(lt(monitoringHistory.executedAt, cutoffIso))
+				.run().changes;
+
+			return { deletedDownloadHistory, deletedMonitoringHistory };
+		});
+
+		return {
+			deletedDownloadHistory,
+			deletedMonitoringHistory,
+			totalDeleted: deletedDownloadHistory + deletedMonitoringHistory,
+			cutoff: cutoffIso
+		};
+	}
+
+	async purgeAllHistory(): Promise<PurgeHistoryResult> {
+		const { deletedDownloadHistory, deletedMonitoringHistory } = await db.transaction((tx) => {
+			const deletedDownloadHistory = tx.delete(downloadHistory).run().changes;
+			const deletedMonitoringHistory = tx.delete(monitoringHistory).run().changes;
+
+			return { deletedDownloadHistory, deletedMonitoringHistory };
+		});
+
+		return {
+			deletedDownloadHistory,
+			deletedMonitoringHistory,
+			totalDeleted: deletedDownloadHistory + deletedMonitoringHistory
 		};
 	}
 
@@ -922,29 +1108,19 @@ export class ActivityService {
 		});
 	}
 
+	private parseRetentionDays(value: unknown): number {
+		const numeric = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
+		if (!Number.isFinite(numeric)) {
+			return DEFAULT_ACTIVITY_RETENTION_DAYS;
+		}
+
+		return Math.max(MIN_ACTIVITY_RETENTION_DAYS, Math.min(MAX_ACTIVITY_RETENTION_DAYS, numeric));
+	}
+
 	private compareActivityPriority(a: UnifiedActivity, b: UnifiedActivity): number {
 		const aPriority = a.status === 'downloading' ? 0 : 1;
 		const bPriority = b.status === 'downloading' ? 0 : 1;
 		return aPriority - bPriority;
-	}
-
-	/**
-	 * Check whether the filters would actually narrow results.
-	 * "Trivial" means status=all, mediaType=all, protocol=all, and no other constraints.
-	 */
-	private hasNonTrivialFilters(filters: ActivityFilters): boolean {
-		if (filters.status && filters.status !== 'all') return true;
-		if (filters.mediaType && filters.mediaType !== 'all') return true;
-		if (filters.protocol && filters.protocol !== 'all') return true;
-		if (filters.search) return true;
-		if (filters.indexer) return true;
-		if (filters.releaseGroup) return true;
-		if (filters.resolution) return true;
-		if (filters.downloadClientId) return true;
-		if (filters.isUpgrade !== undefined) return true;
-		if (filters.startDate) return true;
-		if (filters.endDate) return true;
-		return false;
 	}
 
 	private applyFilters(activities: UnifiedActivity[], filters: ActivityFilters): UnifiedActivity[] {
@@ -1021,7 +1197,9 @@ export class ActivityService {
 			filtered = filtered.filter((a) => new Date(a.startedAt).getTime() >= startTime);
 		}
 		if (filters.endDate) {
-			const endTime = new Date(filters.endDate).getTime();
+			const endDate = new Date(filters.endDate);
+			endDate.setHours(23, 59, 59, 999);
+			const endTime = endDate.getTime();
 			filtered = filtered.filter((a) => new Date(a.startedAt).getTime() <= endTime);
 		}
 

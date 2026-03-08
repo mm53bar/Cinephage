@@ -2,8 +2,10 @@ import type { RequestHandler } from './$types';
 import { createSSEStream } from '$lib/server/sse';
 import { downloadMonitor } from '$lib/server/downloadClients/monitoring';
 import { mediaResolver } from '$lib/server/activity';
+import { activityStreamEvents } from '$lib/server/activity/ActivityStreamEvents';
 import { extractReleaseGroup } from '$lib/server/indexers/parser/patterns/releaseGroup';
 import type { UnifiedActivity, ActivityStatus } from '$lib/types/activity';
+import type { ActivityRefreshEvent } from '$lib/types/sse/events/activity-events.js';
 import { logger } from '$lib/logging';
 
 interface QueueItem {
@@ -204,6 +206,10 @@ export const GET: RequestHandler = async () => {
 			}
 		};
 
+		const onActivityRefresh = (payload: ActivityRefreshEvent) => {
+			send('activity:refresh', payload);
+		};
+
 		// Seed active in-progress downloads so activity rows are visible even if queue:added happened before subscribe.
 		const sendInitialQueueItems = async () => {
 			try {
@@ -228,6 +234,7 @@ export const GET: RequestHandler = async () => {
 		downloadMonitor.on('queue:completed', onQueueCompleted);
 		downloadMonitor.on('queue:imported', onQueueImported);
 		downloadMonitor.on('queue:failed', onQueueFailed);
+		activityStreamEvents.on('activity:refresh', onActivityRefresh);
 
 		// Return cleanup function
 		return () => {
@@ -236,6 +243,7 @@ export const GET: RequestHandler = async () => {
 			downloadMonitor.off('queue:completed', onQueueCompleted);
 			downloadMonitor.off('queue:imported', onQueueImported);
 			downloadMonitor.off('queue:failed', onQueueFailed);
+			activityStreamEvents.off('activity:refresh', onActivityRefresh);
 		};
 	});
 };

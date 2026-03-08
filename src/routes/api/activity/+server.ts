@@ -1,11 +1,17 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { activityService } from '$lib/server/activity';
+import { activityService, activityStreamEvents } from '$lib/server/activity';
 import { logger } from '$lib/logging';
 import type { ActivityFilters, ActivitySortOptions, FilterOptions } from '$lib/types/activity';
 import { db } from '$lib/server/db';
 import { downloadClients, indexers } from '$lib/server/db/schema';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
+
+const deleteHistorySchema = z.object({
+	activityIds: z.array(z.string().min(1)).min(1).max(500)
+});
 
 /**
  * GET - Get unified activity with optional filtering
@@ -124,5 +130,57 @@ export const OPTIONS: RequestHandler = async () => {
 	} catch (err) {
 		logger.error('Error fetching filter options', err instanceof Error ? err : undefined);
 		return json({ error: 'Failed to fetch filter options', success: false }, { status: 500 });
+	}
+};
+
+/**
+ * DELETE - Bulk delete history rows from activity IDs
+ *
+ * Supported IDs:
+ * - history-<downloadHistoryId>
+ * - monitoring-<monitoringHistoryId>
+ *
+ * Queue IDs are skipped (queue lifecycle uses /api/queue handlers).
+ */
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	let body: unknown;
+	try {
+		body = await event.request.json();
+	} catch {
+		return json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+	}
+
+	const parsed = deleteHistorySchema.safeParse(body);
+	if (!parsed.success) {
+		return json(
+			{
+				success: false,
+				error: 'Validation failed',
+				details: parsed.error.flatten()
+			},
+			{ status: 400 }
+		);
+	}
+
+	try {
+		const result = await activityService.deleteHistoryActivities(parsed.data.activityIds);
+		const totalDeleted = result.deletedDownloadHistory + result.deletedMonitoringHistory;
+		if (totalDeleted > 0) {
+			activityStreamEvents.emitRefresh({
+				action: 'delete_selected',
+				timestamp: new Date().toISOString()
+			});
+		}
+		return json({
+			success: true,
+			...result,
+			totalDeleted
+		});
+	} catch (err) {
+		logger.error('Error deleting activity history rows', err instanceof Error ? err : undefined);
+		return json({ success: false, error: 'Failed to delete activity entries' }, { status: 500 });
 	}
 };

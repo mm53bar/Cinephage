@@ -194,12 +194,42 @@ const BETTER_AUTH_TABLE_DEFINITIONS = [
 ] as const;
 
 const BETTER_AUTH_INDEX_DEFINITIONS = [
-	`CREATE INDEX IF NOT EXISTS "idx_session_user" ON "session" ("userId")`,
-	`CREATE INDEX IF NOT EXISTS "idx_account_user" ON "account" ("userId")`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_account_provider" ON "account" ("providerId", "accountId")`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_email" ON "user" ("email")`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_username" ON "user" ("username")`,
-	`CREATE INDEX IF NOT EXISTS "idx_apikey_key" ON "apikey" ("key")`
+	{
+		name: 'idx_session_user',
+		table: 'session',
+		columns: ['userId'],
+		sql: `CREATE INDEX IF NOT EXISTS "idx_session_user" ON "session" ("userId")`
+	},
+	{
+		name: 'idx_account_user',
+		table: 'account',
+		columns: ['userId'],
+		sql: `CREATE INDEX IF NOT EXISTS "idx_account_user" ON "account" ("userId")`
+	},
+	{
+		name: 'idx_account_provider',
+		table: 'account',
+		columns: ['providerId', 'accountId'],
+		sql: `CREATE UNIQUE INDEX IF NOT EXISTS "idx_account_provider" ON "account" ("providerId", "accountId")`
+	},
+	{
+		name: 'idx_user_email',
+		table: 'user',
+		columns: ['email'],
+		sql: `CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_email" ON "user" ("email")`
+	},
+	{
+		name: 'idx_user_username',
+		table: 'user',
+		columns: ['username'],
+		sql: `CREATE UNIQUE INDEX IF NOT EXISTS "idx_user_username" ON "user" ("username")`
+	},
+	{
+		name: 'idx_apikey_key',
+		table: 'apikey',
+		columns: ['key'],
+		sql: `CREATE INDEX IF NOT EXISTS "idx_apikey_key" ON "apikey" ("key")`
+	}
 ] as const;
 
 /**
@@ -4421,14 +4451,39 @@ const MIGRATIONS: MigrationDefinition[] = [
 				tableExists(sqlite, 'user') &&
 				userColumns.some((columnName) => !columnExists(sqlite, 'user', columnName));
 
+			const sessionColumns = [
+				'userId',
+				'token',
+				'expiresAt',
+				'ipAddress',
+				'userAgent',
+				'createdAt',
+				'updatedAt'
+			];
 			const sessionNeedsRepair =
-				tableExists(sqlite, 'session') && !columnExists(sqlite, 'session', 'impersonatedBy');
+				tableExists(sqlite, 'session') &&
+				(sessionColumns.some((columnName) => !columnExists(sqlite, 'session', columnName)) ||
+					!columnExists(sqlite, 'session', 'impersonatedBy'));
+			const accountColumns = ['userId', 'accountId', 'providerId', 'createdAt', 'updatedAt'];
+			const accountNeedsRepair =
+				tableExists(sqlite, 'account') &&
+				accountColumns.some((columnName) => !columnExists(sqlite, 'account', columnName));
 			const apikeyMissing = !tableExists(sqlite, 'apikey');
+			const apikeyNeedsRepair =
+				tableExists(sqlite, 'apikey') &&
+				!columnExists(sqlite, 'apikey', 'key') &&
+				!columnExists(sqlite, 'apikey', 'referenceId') &&
+				!columnExists(sqlite, 'apikey', 'userId');
 			const rateLimitMissing = !tableExists(sqlite, 'rateLimit');
 
 			if (
 				!authHasData &&
-				(userNeedsRepair || sessionNeedsRepair || apikeyMissing || rateLimitMissing)
+				(userNeedsRepair ||
+					sessionNeedsRepair ||
+					accountNeedsRepair ||
+					apikeyMissing ||
+					apikeyNeedsRepair ||
+					rateLimitMissing)
 			) {
 				logger.info(
 					'[SchemaSync] Recreating empty Better Auth schema with complete table definitions'
@@ -4438,6 +4493,21 @@ const MIGRATIONS: MigrationDefinition[] = [
 			}
 
 			createBetterAuthTables(sqlite);
+
+			renameColumnIfExists(sqlite, 'session', 'user_id', 'userId');
+			renameColumnIfExists(sqlite, 'session', 'expires_at', 'expiresAt');
+			renameColumnIfExists(sqlite, 'session', 'ip_address', 'ipAddress');
+			renameColumnIfExists(sqlite, 'session', 'user_agent', 'userAgent');
+			renameColumnIfExists(sqlite, 'session', 'created_at', 'createdAt');
+			renameColumnIfExists(sqlite, 'session', 'updated_at', 'updatedAt');
+			renameColumnIfExists(sqlite, 'account', 'user_id', 'userId');
+			renameColumnIfExists(sqlite, 'account', 'account_id', 'accountId');
+			renameColumnIfExists(sqlite, 'account', 'provider_id', 'providerId');
+			renameColumnIfExists(sqlite, 'account', 'access_token', 'accessToken');
+			renameColumnIfExists(sqlite, 'account', 'refresh_token', 'refreshToken');
+			renameColumnIfExists(sqlite, 'account', 'created_at', 'createdAt');
+			renameColumnIfExists(sqlite, 'account', 'updated_at', 'updatedAt');
+			renameColumnIfExists(sqlite, 'apikey', 'user_id', 'userId');
 
 			ensureColumn(sqlite, 'user', 'name', '"name" text');
 			ensureColumn(sqlite, 'user', 'email', '"email" text');
@@ -4452,7 +4522,22 @@ const MIGRATIONS: MigrationDefinition[] = [
 			ensureColumn(sqlite, 'user', 'createdAt', '"createdAt" date');
 			ensureColumn(sqlite, 'user', 'updatedAt', '"updatedAt" date');
 
+			ensureColumn(sqlite, 'session', 'userId', '"userId" text');
+			ensureColumn(sqlite, 'session', 'token', '"token" text');
+			ensureColumn(sqlite, 'session', 'expiresAt', '"expiresAt" date');
+			ensureColumn(sqlite, 'session', 'ipAddress', '"ipAddress" text');
+			ensureColumn(sqlite, 'session', 'userAgent', '"userAgent" text');
+			ensureColumn(sqlite, 'session', 'createdAt', '"createdAt" date');
+			ensureColumn(sqlite, 'session', 'updatedAt', '"updatedAt" date');
 			ensureColumn(sqlite, 'session', 'impersonatedBy', '"impersonatedBy" text');
+
+			ensureColumn(sqlite, 'account', 'userId', '"userId" text');
+			ensureColumn(sqlite, 'account', 'accountId', '"accountId" text');
+			ensureColumn(sqlite, 'account', 'providerId', '"providerId" text');
+			ensureColumn(sqlite, 'account', 'accessToken', '"accessToken" text');
+			ensureColumn(sqlite, 'account', 'refreshToken', '"refreshToken" text');
+			ensureColumn(sqlite, 'account', 'createdAt', '"createdAt" date');
+			ensureColumn(sqlite, 'account', 'updatedAt', '"updatedAt" date');
 
 			ensureColumn(sqlite, 'apikey', 'name', '"name" text');
 			ensureColumn(sqlite, 'apikey', 'start', '"start" text');
@@ -4675,6 +4760,35 @@ function columnExists(sqlite: Database.Database, tableName: string, columnName: 
 	return result.some((col) => col.name === columnName);
 }
 
+function renameColumnIfExists(
+	sqlite: Database.Database,
+	tableName: string,
+	fromColumn: string,
+	toColumn: string
+): void {
+	if (
+		!tableExists(sqlite, tableName) ||
+		columnExists(sqlite, tableName, toColumn) ||
+		!columnExists(sqlite, tableName, fromColumn)
+	) {
+		return;
+	}
+
+	try {
+		sqlite
+			.prepare(`ALTER TABLE "${tableName}" RENAME COLUMN "${fromColumn}" TO "${toColumn}"`)
+			.run();
+		logger.info(`[SchemaSync] Renamed ${tableName}.${fromColumn} to ${toColumn}`);
+	} catch (error) {
+		logger.warn('[SchemaSync] Failed to rename legacy column', {
+			table: tableName,
+			from: fromColumn,
+			to: toColumn,
+			error: error instanceof Error ? error.message : String(error)
+		});
+	}
+}
+
 function ensureColumn(
 	sqlite: Database.Database,
 	tableName: string,
@@ -4707,8 +4821,24 @@ function createBetterAuthTables(sqlite: Database.Database): void {
 }
 
 function createBetterAuthIndexes(sqlite: Database.Database): void {
-	for (const sql of BETTER_AUTH_INDEX_DEFINITIONS) {
-		sqlite.prepare(sql).run();
+	for (const indexDef of BETTER_AUTH_INDEX_DEFINITIONS) {
+		if (!tableExists(sqlite, indexDef.table)) {
+			continue;
+		}
+
+		const missingColumns = indexDef.columns.filter(
+			(columnName) => !columnExists(sqlite, indexDef.table, columnName)
+		);
+		if (missingColumns.length > 0) {
+			logger.warn('[SchemaSync] Skipping Better Auth index, missing columns', {
+				index: indexDef.name,
+				table: indexDef.table,
+				missingColumns
+			});
+			continue;
+		}
+
+		sqlite.prepare(indexDef.sql).run();
 	}
 
 	if (!tableExists(sqlite, 'apikey')) {
@@ -4950,9 +5080,17 @@ const MIGRATION_COLUMN_MAP: Record<number, Array<{ table: string; column: string
 		{ table: 'user', column: 'email' },
 		{ table: 'user', column: 'displayUsername' },
 		{ table: 'user', column: 'banned' },
+		{ table: 'session', column: 'userId' },
 		{ table: 'session', column: 'impersonatedBy' },
+		{ table: 'account', column: 'userId' },
+		{ table: 'account', column: 'accountId' },
+		{ table: 'account', column: 'providerId' },
 		{ table: 'apikey', column: 'key' },
 		{ table: 'rateLimit', column: 'lastRequest' }
+	],
+	65: [
+		{ table: 'apikey', column: 'referenceId' },
+		{ table: 'apikey', column: 'configId' }
 	]
 };
 

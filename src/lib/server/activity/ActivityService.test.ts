@@ -97,6 +97,28 @@ describe('ActivityService download client filtering', () => {
 	});
 });
 
+describe('ActivityService date filtering', () => {
+	it('treats endDate as inclusive through end-of-day', () => {
+		const service = ActivityService.getInstance() as unknown as {
+			applyFilters: (activities: UnifiedActivity[], filters: ActivityFilters) => UnifiedActivity[];
+		};
+
+		const activities: UnifiedActivity[] = [
+			createActivity('inside-day', { startedAt: '2026-03-07T22:15:00.000Z' }),
+			createActivity('outside-day', { startedAt: '2026-03-08T00:00:00.000Z' })
+		];
+
+		const filtered = service.applyFilters(activities, {
+			status: 'all',
+			mediaType: 'all',
+			protocol: 'all',
+			endDate: '2026-03-07'
+		});
+
+		expect(filtered.map((activity) => activity.id)).toEqual(['inside-day']);
+	});
+});
+
 describe('ActivityService sorting priority', () => {
 	it('always keeps active downloads at the top of the list', () => {
 		const service = ActivityService.getInstance() as unknown as {

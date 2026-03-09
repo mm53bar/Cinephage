@@ -189,4 +189,138 @@ describe('syncSchema Better Auth repair', () => {
 
 		expect(row.role).toBe('admin');
 	});
+
+	it('repairs legacy snake_case auth columns without failing startup', () => {
+		const sqlite = createTestDatabase();
+
+		sqlite
+			.prepare(
+				`CREATE TABLE "user" (
+					"id" text PRIMARY KEY NOT NULL,
+					"name" text,
+					"email" text NOT NULL,
+					"emailVerified" integer DEFAULT 0,
+					"image" text,
+					"username" text UNIQUE,
+					"displayUsername" text,
+					"role" text DEFAULT 'admin' NOT NULL,
+					"banned" integer DEFAULT 0,
+					"banReason" text,
+					"banExpires" date,
+					"createdAt" date NOT NULL,
+					"updatedAt" date NOT NULL
+				)`
+			)
+			.run();
+		sqlite
+			.prepare(
+				`CREATE TABLE "session" (
+					"id" text PRIMARY KEY NOT NULL,
+					"user_id" text NOT NULL,
+					"token" text NOT NULL UNIQUE,
+					"expires_at" date NOT NULL,
+					"ip_address" text,
+					"user_agent" text,
+					"created_at" date NOT NULL,
+					"updated_at" date NOT NULL
+				)`
+			)
+			.run();
+		sqlite
+			.prepare(
+				`CREATE TABLE "account" (
+					"id" text PRIMARY KEY NOT NULL,
+					"user_id" text NOT NULL,
+					"account_id" text NOT NULL,
+					"provider_id" text NOT NULL,
+					"created_at" date NOT NULL,
+					"updated_at" date NOT NULL
+				)`
+			)
+			.run();
+		sqlite
+			.prepare(
+				`CREATE TABLE "apikey" (
+					"id" text PRIMARY KEY NOT NULL,
+					"key" text NOT NULL,
+					"user_id" text NOT NULL,
+					"createdAt" date NOT NULL,
+					"updatedAt" date NOT NULL
+				)`
+			)
+			.run();
+		sqlite
+			.prepare(`CREATE TABLE "settings" ("key" text PRIMARY KEY NOT NULL, "value" text NOT NULL)`)
+			.run();
+		sqlite.prepare(`INSERT INTO "settings" ("key", "value") VALUES ('schema_version', '62')`).run();
+
+		sqlite
+			.prepare(
+				`INSERT INTO "user" ("id", "email", "username", "role", "createdAt", "updatedAt")
+				 VALUES (?, ?, ?, ?, ?, ?)`
+			)
+			.run(
+				'user-legacy',
+				'legacy@example.com',
+				'legacy-user',
+				'admin',
+				'2026-03-01T00:00:00.000Z',
+				'2026-03-01T00:00:00.000Z'
+			);
+		sqlite
+			.prepare(
+				`INSERT INTO "session" ("id", "user_id", "token", "expires_at", "created_at", "updated_at")
+				 VALUES (?, ?, ?, ?, ?, ?)`
+			)
+			.run(
+				'session-legacy',
+				'user-legacy',
+				'legacy-token',
+				'2026-04-01T00:00:00.000Z',
+				'2026-03-01T00:00:00.000Z',
+				'2026-03-01T00:00:00.000Z'
+			);
+		sqlite
+			.prepare(
+				`INSERT INTO "account" ("id", "user_id", "account_id", "provider_id", "created_at", "updated_at")
+				 VALUES (?, ?, ?, ?, ?, ?)`
+			)
+			.run(
+				'account-legacy',
+				'user-legacy',
+				'provider-account',
+				'credentials',
+				'2026-03-01T00:00:00.000Z',
+				'2026-03-01T00:00:00.000Z'
+			);
+		sqlite
+			.prepare(
+				`INSERT INTO "apikey" ("id", "key", "user_id", "createdAt", "updatedAt")
+				 VALUES (?, ?, ?, ?, ?)`
+			)
+			.run(
+				'apikey-legacy',
+				'legacy-apikey',
+				'user-legacy',
+				'2026-03-01T00:00:00.000Z',
+				'2026-03-01T00:00:00.000Z'
+			);
+
+		expect(() => syncSchema(sqlite)).not.toThrow();
+
+		expect(getColumnNames(sqlite, 'session')).toEqual(
+			expect.arrayContaining(['userId', 'expiresAt'])
+		);
+		expect(getColumnNames(sqlite, 'account')).toEqual(
+			expect.arrayContaining(['userId', 'accountId', 'providerId'])
+		);
+		expect(getColumnNames(sqlite, 'apikey')).toEqual(
+			expect.arrayContaining(['referenceId', 'configId'])
+		);
+
+		const sessionRow = sqlite
+			.prepare(`SELECT "userId" FROM "session" WHERE "id" = ?`)
+			.get('session-legacy') as { userId: string };
+		expect(sessionRow.userId).toBe('user-legacy');
+	});
 });

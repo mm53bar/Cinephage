@@ -26,10 +26,19 @@ export interface ActivityProgressEvent {
 }
 
 /**
+ * activity:refresh event - Trigger clients to reload activity list after bulk mutations
+ */
+export interface ActivityRefreshEvent {
+	action: 'purge_all' | 'purge_older_than_retention' | 'delete_selected';
+	timestamp: string;
+}
+
+/**
  * All events for the activity stream endpoint
  */
 export interface ActivityStreamEvents {
 	'activity:new': ActivityNewEvent;
 	'activity:updated': ActivityUpdatedEvent;
 	'activity:progress': ActivityProgressEvent;
+	'activity:refresh': ActivityRefreshEvent;
 }

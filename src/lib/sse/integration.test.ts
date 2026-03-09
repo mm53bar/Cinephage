@@ -244,6 +244,10 @@ describe('SSE Event Type Validation', () => {
 					id: 'test-activity',
 					progress: 50,
 					status: 'downloading'
+				},
+				'activity:refresh': {
+					action: 'purge_older_than_retention',
+					timestamp: new Date().toISOString()
 				}
 			};
 

@@ -251,6 +251,7 @@ async function initializeServices(): Promise<void> {
 			// Initialize captcha solver
 			const captchaSolver = getCaptchaSolver();
 			if (captchaSolver) {
+				serviceManager.register(captchaSolver);
 				logger.info('CaptchaSolver initialized for anti-bot bypass');
 			}
 

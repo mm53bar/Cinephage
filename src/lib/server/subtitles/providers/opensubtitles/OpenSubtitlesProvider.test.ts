@@ -78,32 +78,30 @@ describe('OpenSubtitlesProvider - authentication (Bug #180)', () => {
 		// Track all fetch calls
 		const fetchCalls: { url: string; headers: Record<string, string> }[] = [];
 
-		vi.spyOn(provider as any, 'fetchWithTimeout').mockImplementation(
-			async (...args: unknown[]) => {
-				const url = args[0] as string;
-				const options = args[1] as any;
-				const headers = options?.headers ?? {};
-				fetchCalls.push({ url, headers });
+		vi.spyOn(provider as any, 'fetchWithTimeout').mockImplementation(async (...args: unknown[]) => {
+			const url = args[0] as string;
+			const options = args[1] as any;
+			const headers = options?.headers ?? {};
+			fetchCalls.push({ url, headers });
 
-				// Login endpoint
-				if (url.includes('/login')) {
-					return {
-						ok: true,
-						json: async () => ({
-							token: 'jwt-token-123',
-							base_url: 'https://api.opensubtitles.com/api/v1',
-							user: { allowed_downloads: 20, vip: false }
-						})
-					};
-				}
-
-				// Search endpoint
+			// Login endpoint
+			if (url.includes('/login')) {
 				return {
 					ok: true,
-					json: async () => SEARCH_RESPONSE
+					json: async () => ({
+						token: 'jwt-token-123',
+						base_url: 'https://api.opensubtitles.com/api/v1',
+						user: { allowed_downloads: 20, vip: false }
+					})
 				};
 			}
-		);
+
+			// Search endpoint
+			return {
+				ok: true,
+				json: async () => SEARCH_RESPONSE
+			};
+		});
 
 		await provider.search({ title: 'Inception', year: 2010, languages: ['en'] });
 
@@ -121,14 +119,12 @@ describe('OpenSubtitlesProvider - authentication (Bug #180)', () => {
 
 		const fetchCalls: { url: string; headers: Record<string, string> }[] = [];
 
-		vi.spyOn(provider as any, 'fetchWithTimeout').mockImplementation(
-			async (...args: unknown[]) => {
-				const url = args[0] as string;
-				const options = args[1] as any;
-				fetchCalls.push({ url, headers: options?.headers ?? {} });
-				return { ok: true, json: async () => SEARCH_RESPONSE };
-			}
-		);
+		vi.spyOn(provider as any, 'fetchWithTimeout').mockImplementation(async (...args: unknown[]) => {
+			const url = args[0] as string;
+			const options = args[1] as any;
+			fetchCalls.push({ url, headers: options?.headers ?? {} });
+			return { ok: true, json: async () => SEARCH_RESPONSE };
+		});
 
 		await provider.search({ title: 'Inception', year: 2010, languages: ['en'] });
 
@@ -145,32 +141,30 @@ describe('OpenSubtitlesProvider - authentication (Bug #180)', () => {
 
 		const fetchCalls: { url: string; headers: Record<string, string> }[] = [];
 
-		vi.spyOn(provider as any, 'fetchWithTimeout').mockImplementation(
-			async (...args: unknown[]) => {
-				const url = args[0] as string;
-				const options = args[1] as any;
-				fetchCalls.push({ url, headers: options?.headers ?? {} });
+		vi.spyOn(provider as any, 'fetchWithTimeout').mockImplementation(async (...args: unknown[]) => {
+			const url = args[0] as string;
+			const options = args[1] as any;
+			fetchCalls.push({ url, headers: options?.headers ?? {} });
 
-				if (url.includes('/login')) {
-					return {
-						ok: true,
-						json: async () => ({
-							token: 'jwt-token-456',
-							base_url: 'https://api.opensubtitles.com/api/v1',
-							user: { allowed_downloads: 20, vip: false }
-						})
-					};
-				}
-				if (url.includes('/download')) {
-					return { ok: true, json: async () => DOWNLOAD_RESPONSE };
-				}
-				// Actual subtitle file download
+			if (url.includes('/login')) {
 				return {
 					ok: true,
-					arrayBuffer: async () => new ArrayBuffer(8)
+					json: async () => ({
+						token: 'jwt-token-456',
+						base_url: 'https://api.opensubtitles.com/api/v1',
+						user: { allowed_downloads: 20, vip: false }
+					})
 				};
 			}
-		);
+			if (url.includes('/download')) {
+				return { ok: true, json: async () => DOWNLOAD_RESPONSE };
+			}
+			// Actual subtitle file download
+			return {
+				ok: true,
+				arrayBuffer: async () => new ArrayBuffer(8)
+			};
+		});
 
 		await provider.download({
 			providerId: 'test-opensubtitles',

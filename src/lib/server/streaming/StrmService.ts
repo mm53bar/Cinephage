@@ -210,7 +210,6 @@ export class StrmService {
 
 		try {
 			let destinationPath: string;
-			let filename: string;
 
 			if (mediaType === 'movie' && movieId) {
 				// Get movie details for folder path

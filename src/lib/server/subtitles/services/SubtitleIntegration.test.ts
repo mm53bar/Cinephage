@@ -18,8 +18,7 @@ import type { SubtitleSearchCriteria } from '../types';
 initTestDb();
 
 // Must mock before importing the services that use db
-vi.mock('$lib/server/db', async () => {
-	const { getTestDb } = await import('../../../../test/db-helper');
+vi.mock('$lib/server/db', () => {
 	return {
 		get db() {
 			return getTestDb().db;

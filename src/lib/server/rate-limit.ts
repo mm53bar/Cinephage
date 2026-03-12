@@ -30,6 +30,16 @@ const STREAMING_LIMIT: RateLimitConfig = {
 	maxRequests: 30
 };
 
+const ACTIVITY_API_LIMIT: RateLimitConfig = {
+	windowMs: 15 * 60 * 1000, // 15 minutes
+	maxRequests: 300
+};
+
+const ACTIVITY_STREAM_LIMIT: RateLimitConfig = {
+	windowMs: 15 * 60 * 1000, // 15 minutes
+	maxRequests: 300
+};
+
 /**
  * Check if an IP address is in a private/local network range
  * RFC1918 private ranges + loopback + link-local
@@ -169,6 +179,16 @@ export function checkApiRateLimit(event: RequestEvent): Response | null {
 		config = AUTH_LIMIT;
 		keyPrefix = 'auth';
 	}
+	// Activity SSE is long-lived and should not compete with general API quota.
+	else if (pathname.startsWith('/api/activity/stream')) {
+		config = ACTIVITY_STREAM_LIMIT;
+		keyPrefix = 'activity-stream';
+	}
+	// Activity endpoints are high-frequency by design (filters/live updates).
+	else if (pathname.startsWith('/api/activity')) {
+		config = ACTIVITY_API_LIMIT;
+		keyPrefix = 'activity';
+	}
 	// Streaming endpoints get different limits
 	else if (pathname.startsWith('/api/streaming/') || pathname.startsWith('/api/livetv/stream/')) {
 		config = STREAMING_LIMIT;
@@ -226,6 +246,12 @@ export function applyRateLimitHeaders(event: RequestEvent, response: Response): 
 	if (pathname.startsWith('/api/auth/')) {
 		config = AUTH_LIMIT;
 		keyPrefix = 'auth';
+	} else if (pathname.startsWith('/api/activity/stream')) {
+		config = ACTIVITY_STREAM_LIMIT;
+		keyPrefix = 'activity-stream';
+	} else if (pathname.startsWith('/api/activity')) {
+		config = ACTIVITY_API_LIMIT;
+		keyPrefix = 'activity';
 	} else if (pathname.startsWith('/api/streaming/') || pathname.startsWith('/api/livetv/stream/')) {
 		config = STREAMING_LIMIT;
 		keyPrefix = 'stream';

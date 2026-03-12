@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
-import { initTestDb, closeTestDb } from '../../../../test/db-helper';
+import { initTestDb, closeTestDb, getTestDb } from '../../../../test/db-helper';
 import type { LanguageProfile } from './LanguageProfileService';
 import type { SubtitleStatus } from '../types';
 
@@ -7,8 +7,7 @@ import type { SubtitleStatus } from '../types';
 initTestDb();
 
 // Must mock before importing the services that use db
-vi.mock('$lib/server/db', async () => {
-	const { getTestDb } = await import('../../../../test/db-helper');
+vi.mock('$lib/server/db', () => {
 	return {
 		get db() {
 			return getTestDb().db;

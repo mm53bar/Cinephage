@@ -15,8 +15,7 @@ import { COMPACT_PROFILE, BALANCED_PROFILE } from '../scoring';
 initTestDb();
 
 // Mock $lib/server/db to use the test database
-vi.mock('$lib/server/db/index.js', async () => {
-	const { getTestDb } = await import('../../../test/db-helper');
+vi.mock('$lib/server/db/index.js', () => {
 	return {
 		get db() {
 			return getTestDb().db;

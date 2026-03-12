@@ -2,7 +2,12 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { activityService, activityStreamEvents } from '$lib/server/activity';
 import { logger } from '$lib/logging';
-import type { ActivityFilters, ActivitySortOptions, FilterOptions } from '$lib/types/activity';
+import type {
+	ActivityFilters,
+	ActivitySortOptions,
+	FilterOptions,
+	ActivityScope
+} from '$lib/types/activity';
 import { db } from '$lib/server/db';
 import { downloadClients, indexers } from '$lib/server/db/schema';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
@@ -29,6 +34,7 @@ const deleteHistorySchema = z.object({
  * - downloadClientId: Filter by download client ID
  * - startDate: Filter activities after this date (ISO string)
  * - endDate: Filter activities before this date (ISO string)
+ * - scope: View scope ('all', 'active', 'history')
  * - limit: Max number of results (default 50)
  * - offset: Pagination offset (default 0)
  * - sort: Sort field ('time', 'media', 'size', 'status')
@@ -49,6 +55,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		const downloadClientId = url.searchParams.get('downloadClientId') || undefined;
 		const startDate = url.searchParams.get('startDate') || undefined;
 		const endDate = url.searchParams.get('endDate') || undefined;
+		const scopeParam = url.searchParams.get('scope');
 		const limitParam = url.searchParams.get('limit');
 		const offsetParam = url.searchParams.get('offset');
 		const sortField = url.searchParams.get('sort') as ActivitySortOptions['field'] | null;
@@ -78,12 +85,15 @@ export const GET: RequestHandler = async ({ url }) => {
 			direction: sortDirection || 'desc'
 		};
 
+		const scope: ActivityScope =
+			scopeParam === 'active' || scopeParam === 'history' ? scopeParam : 'all';
+
 		// Build pagination
 		const limit = Math.min(limitParam ? parseInt(limitParam, 10) : 50, 100);
 		const offset = offsetParam ? parseInt(offsetParam, 10) : 0;
 
 		// Get activities from service
-		const result = await activityService.getActivities(filters, sort, { limit, offset });
+		const result = await activityService.getActivities(filters, sort, { limit, offset }, scope);
 
 		return json({
 			success: true,

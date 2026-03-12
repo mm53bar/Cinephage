@@ -11,8 +11,7 @@ import { initTestDb, closeTestDb, getTestDb } from '../../../test/db-helper';
 initTestDb();
 
 // Mock the database module
-vi.mock('$lib/server/db', async () => {
-	const { getTestDb } = await import('../../../test/db-helper');
+vi.mock('$lib/server/db', () => {
 	return {
 		get db() {
 			return getTestDb().db;

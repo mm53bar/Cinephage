@@ -76,6 +76,7 @@ export function createSSEStream(
 			const encoder = new TextEncoder();
 			let cleanedUp = false;
 			let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+			let userCleanup: SSECleanupFunction | null = null;
 
 			/**
 			 * Send an SSE event
@@ -85,7 +86,8 @@ export function createSSEStream(
 					controller.enqueue(encoder.encode(`event: ${event}\n`));
 					controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
 				} catch {
-					// Connection closed, clean up listeners/timers immediately
+					// Connection closed, clean up listeners/timers immediately.
+					// Must include user cleanup to avoid leaked endpoint listeners.
 					cleanup();
 				}
 			};
@@ -95,6 +97,10 @@ export function createSSEStream(
 				cleanedUp = true;
 				if (heartbeatInterval) {
 					clearInterval(heartbeatInterval);
+				}
+				if (userCleanup) {
+					userCleanup();
+					userCleanup = null;
 				}
 				cleanupStream = null;
 				try {
@@ -112,15 +118,17 @@ export function createSSEStream(
 				send('heartbeat', { timestamp: new Date().toISOString() });
 			}, heartbeatIntervalMs);
 
-			// Set up event handlers and get cleanup function
-			// Supports both sync and async setup functions
-			const userCleanup = await Promise.resolve(setup(send));
-
-			// ReadableStream.start() return value is ignored; use cancel() for cleanup
-			cleanupStream = () => {
+			try {
+				// Set up event handlers and get cleanup function
+				// Supports both sync and async setup functions
+				userCleanup = await Promise.resolve(setup(send));
+			} catch (error) {
 				cleanup();
-				userCleanup?.();
-			};
+				throw error;
+			}
+
+			// ReadableStream.start() return value is ignored; use cancel() for cleanup.
+			cleanupStream = cleanup;
 		},
 		cancel() {
 			cleanupStream?.();

@@ -134,6 +134,84 @@ describe('ImportService NZB-Mount selection', () => {
 	});
 });
 
+describe('ImportService queue-context episode fallback', () => {
+	beforeEach(() => {
+		ImportService.resetInstance();
+	});
+
+	it('maps relative season-pack episode numbers using queued episode IDs', () => {
+		const service = ImportService.getInstance() as unknown as {
+			matchEpisodesFromQueueContext: (
+				seriesEpisodes: Array<{
+					id: string;
+					seriesId: string;
+					seasonNumber: number;
+					episodeNumber: number;
+				}>,
+				queueItem: { episodeIds?: string[] | null; seasonNumber?: number | null },
+				identifier: {
+					numbering: 'standard';
+					seasonNumber: number;
+					episodeNumbers: number[];
+				}
+			) => Array<{ id: string; episodeNumber: number }>;
+		};
+
+		const seriesEpisodes = [
+			{ id: 'ep-62', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 62 },
+			{ id: 'ep-63', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 63 },
+			{ id: 'ep-64', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 64 },
+			{ id: 'ep-65', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 65 },
+			{ id: 'ep-66', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 66 },
+			{ id: 'ep-67', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 67 },
+			{ id: 'ep-68', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 68 },
+			{ id: 'ep-69', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 69 }
+		];
+
+		const matching = service.matchEpisodesFromQueueContext(
+			seriesEpisodes,
+			{
+				episodeIds: ['ep-62', 'ep-63', 'ep-64', 'ep-65', 'ep-66', 'ep-67', 'ep-68', 'ep-69'],
+				seasonNumber: 2
+			},
+			{
+				numbering: 'standard',
+				seasonNumber: 2,
+				episodeNumbers: [1, 2, 8]
+			}
+		);
+
+		expect(matching.map((episode) => episode.id)).toEqual(['ep-62', 'ep-63', 'ep-69']);
+	});
+
+	it('returns no fallback matches when parsed season differs from queued season', () => {
+		const service = ImportService.getInstance() as unknown as {
+			matchEpisodesFromQueueContext: (
+				seriesEpisodes: Array<{
+					id: string;
+					seriesId: string;
+					seasonNumber: number;
+					episodeNumber: number;
+				}>,
+				queueItem: { episodeIds?: string[] | null; seasonNumber?: number | null },
+				identifier: {
+					numbering: 'standard';
+					seasonNumber: number;
+					episodeNumbers: number[];
+				}
+			) => Array<{ id: string; episodeNumber: number }>;
+		};
+
+		const matching = service.matchEpisodesFromQueueContext(
+			[{ id: 'ep-62', seriesId: 'series-1', seasonNumber: 2, episodeNumber: 62 }],
+			{ episodeIds: ['ep-62'], seasonNumber: 2 },
+			{ numbering: 'standard', seasonNumber: 3, episodeNumbers: [1] }
+		);
+
+		expect(matching).toHaveLength(0);
+	});
+});
+
 describe('ImportService metadata extraction', () => {
 	beforeEach(() => {
 		ImportService.resetInstance();

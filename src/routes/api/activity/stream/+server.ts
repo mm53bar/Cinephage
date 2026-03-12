@@ -56,6 +56,8 @@ function getQueueErrorFromPayload(payload: unknown): string | undefined {
 
 function mapQueueStatusToActivityStatus(status: string): ActivityStatus {
 	switch (status) {
+		case 'seeding':
+			return 'seeding';
 		case 'paused':
 			return 'paused';
 		case 'failed':
@@ -216,7 +218,7 @@ export const GET: RequestHandler = async () => {
 				const queueItems = await downloadMonitor.getQueue();
 				for (const queueItem of queueItems) {
 					const activity = await queueItemToActivity(queueItem as QueueItem);
-					if (activity.status !== 'downloading') continue;
+					if (activity.status !== 'downloading' && activity.status !== 'seeding') continue;
 					send('activity:new', activity);
 				}
 			} catch (error) {

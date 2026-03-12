@@ -716,7 +716,7 @@
 			<div id="custom-presets-panel" class="card-body border-t border-base-300 pt-4">
 				<div class="flex flex-wrap items-start gap-3">
 					{#if customPresets.length > 0}
-						<div class="form-control max-w-md min-w-[200px] flex-1">
+						<div class="form-control max-w-md min-w-50 flex-1">
 							<select
 								id="customPresetSelect"
 								class="select-bordered select select-sm"
@@ -1079,13 +1079,13 @@
 								<p class="font-medium">Format validation</p>
 								{#if invalidFormatFields.length > 0}
 									<ul class="mt-2 space-y-1 text-sm text-error">
-										{#each invalidFormatFields as field}
+										{#each invalidFormatFields as field (field)}
 											<li>{FORMAT_FIELD_LABELS[field]} has syntax issues.</li>
 										{/each}
 									</ul>
 								{:else if validationWarningFields.length > 0}
 									<ul class="mt-2 space-y-1 text-sm text-warning">
-										{#each validationWarningFields as field}
+										{#each validationWarningFields as field (field)}
 											<li>{FORMAT_FIELD_LABELS[field]} has warnings worth reviewing.</li>
 										{/each}
 									</ul>

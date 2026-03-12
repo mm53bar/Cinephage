@@ -89,8 +89,7 @@ const { searchService, downloadService, providerManager, profileService, missing
 		};
 	});
 
-vi.mock('$lib/server/db', async () => {
-	const { getTestDb } = await import('../../../../test/db-helper');
+vi.mock('$lib/server/db', () => {
 	return {
 		get db() {
 			return getTestDb().db;
@@ -102,8 +101,7 @@ vi.mock('$lib/server/db', async () => {
 	};
 });
 
-vi.mock('$lib/server/db/index.js', async () => {
-	const { getTestDb } = await import('../../../../test/db-helper');
+vi.mock('$lib/server/db/index.js', () => {
 	return {
 		get db() {
 			return getTestDb().db;

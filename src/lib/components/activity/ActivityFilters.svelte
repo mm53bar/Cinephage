@@ -18,6 +18,7 @@
 	interface Props {
 		filters: ActivityFilters;
 		filterOptions: FilterOptions;
+		statusContext?: 'active' | 'history';
 		onFiltersChange: (filters: ActivityFilters) => void;
 		onClearFilters: () => void;
 		showActiveFilters?: boolean;
@@ -29,6 +30,7 @@
 	let {
 		filters,
 		filterOptions,
+		statusContext = 'history',
 		onFiltersChange,
 		onClearFilters,
 		showActiveFilters = false,
@@ -105,17 +107,26 @@
 		});
 	}
 
-	// Status options with colors
-	const statusOptions = [
+	const activeStatusOptions = [
+		{ value: 'all', label: 'All' },
+		{ value: 'downloading', label: 'Downloading' },
+		{ value: 'seeding', label: 'Seeding' },
+		{ value: 'paused', label: 'Paused' },
+		{ value: 'failed', label: 'Failed' }
+	] as const;
+
+	const historyStatusOptions = [
 		{ value: 'all', label: 'All', color: '' },
 		{ value: 'success', label: 'Success', color: 'badge-success' },
-		{ value: 'downloading', label: 'Downloading', color: 'badge-info' },
-		{ value: 'paused', label: 'Paused', color: 'badge-warning' },
 		{ value: 'failed', label: 'Failed', color: 'badge-error' },
 		{ value: 'removed', label: 'Removed', color: 'badge-ghost' },
 		{ value: 'rejected', label: 'Rejected', color: 'badge-warning' },
 		{ value: 'no_results', label: 'No Results', color: 'badge-ghost' }
-	];
+	] as const;
+
+	const statusOptions = $derived(
+		statusContext === 'active' ? activeStatusOptions : historyStatusOptions
+	);
 
 	// Protocol options
 	const protocolOptions = [
@@ -200,25 +211,27 @@
 			</button>
 		</div>
 
-		<div class="join">
-			{#each datePresets as preset (preset.label)}
-				<button
-					class="btn join-item btn-sm {isDatePresetActive(preset.days)
-						? 'btn-primary'
-						: 'btn-ghost'}"
-					onclick={() => applyDatePreset(preset.days)}
-					title="Last {preset.days === 0 ? '24 hours' : preset.days + ' days'}"
-					aria-pressed={isDatePresetActive(preset.days)}
-				>
-					{preset.label}
-				</button>
-			{/each}
-			{#if filters.startDate || filters.endDate}
-				<button class="btn join-item btn-ghost btn-sm btn-error" onclick={clearDateRange}>
-					<X class="h-3 w-3" />
-				</button>
-			{/if}
-		</div>
+		{#if statusContext === 'history'}
+			<div class="join">
+				{#each datePresets as preset (preset.label)}
+					<button
+						class="btn join-item btn-sm {isDatePresetActive(preset.days)
+							? 'btn-primary'
+							: 'btn-ghost'}"
+						onclick={() => applyDatePreset(preset.days)}
+						title="Last {preset.days === 0 ? '24 hours' : preset.days + ' days'}"
+						aria-pressed={isDatePresetActive(preset.days)}
+					>
+						{preset.label}
+					</button>
+				{/each}
+				{#if filters.startDate || filters.endDate}
+					<button class="btn join-item btn-ghost btn-sm btn-error" onclick={clearDateRange}>
+						<X class="h-3 w-3" />
+					</button>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	{#if isExpanded}
@@ -373,25 +386,27 @@
 				</div>
 			</div>
 
-			<!-- Include No Results Toggle -->
-			<div class="space-y-2">
-				<label class="flex items-center gap-2 text-sm font-medium">
-					<Search class="h-4 w-4" />
-					Include 'No Results'
-				</label>
-				<div class="form-control">
-					<label class="label cursor-pointer justify-start gap-2">
-						<input
-							type="checkbox"
-							class="toggle toggle-primary toggle-sm"
-							checked={filters.includeNoResults || false}
-							onchange={(e) =>
-								updateFilter('includeNoResults', e.currentTarget.checked || undefined)}
-						/>
-						<span class="label-text text-sm">Show items with no releases found</span>
+			{#if statusContext === 'history'}
+				<!-- Include No Results Toggle -->
+				<div class="space-y-2">
+					<label class="flex items-center gap-2 text-sm font-medium">
+						<Search class="h-4 w-4" />
+						Include 'No Results'
 					</label>
+					<div class="form-control">
+						<label class="label cursor-pointer justify-start gap-2">
+							<input
+								type="checkbox"
+								class="toggle toggle-primary toggle-sm"
+								checked={filters.includeNoResults || false}
+								onchange={(e) =>
+									updateFilter('includeNoResults', e.currentTarget.checked || undefined)}
+							/>
+							<span class="label-text text-sm">Show items with no releases found</span>
+						</label>
+					</div>
 				</div>
-			</div>
+			{/if}
 		</div>
 	{/if}
 

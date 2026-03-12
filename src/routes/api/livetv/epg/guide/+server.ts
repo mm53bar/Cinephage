@@ -49,7 +49,7 @@ export const GET: RequestHandler = async ({ url }) => {
 
 		// Get channel IDs (from param or lineup)
 		let channelIds: string[];
-		let lineup = channelIdsParam ? [] : await channelLineupService.getLineup();
+		const lineup = channelIdsParam ? [] : await channelLineupService.getLineup();
 		if (channelIdsParam) {
 			channelIds = channelIdsParam
 				.split(',')

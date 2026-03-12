@@ -76,6 +76,7 @@ export function createSSE<T = Record<string, unknown>>(
 	let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 	let isManuallyClosed = false;
 	let lastUrl = url;
+	let lastServerActivity = Date.now();
 
 	// Store event listener references for cleanup
 	const activeListeners: Array<{ event: string; handler: (e: MessageEvent) => void }> = [];
@@ -99,20 +100,63 @@ export function createSSE<T = Record<string, unknown>>(
 		}
 	}
 
+	function markServerActivity(): void {
+		lastServerActivity = Date.now();
+	}
+
+	function scheduleReconnect(): void {
+		if (isManuallyClosed || isPaused) {
+			return;
+		}
+
+		if (reconnectCount < config.maxRetries) {
+			setStatus('error');
+
+			const delay = getBackoffDelay(reconnectCount, config.baseDelay, config.maxDelay);
+			debug(`Reconnecting in ${delay}ms (attempt ${reconnectCount + 1})`);
+
+			reconnectTimer = setTimeout(() => {
+				reconnectCount++;
+				connect();
+			}, delay);
+			return;
+		}
+
+		debug('Max retries reached, giving up');
+		setStatus('error');
+		maxRetriesExceeded = true;
+		if (config.shared) {
+			openCircuit(url, config.circuitBreakerTimeout);
+		}
+	}
+
 	/**
-	 * Send heartbeat to keep connection alive
+	 * Watch heartbeats/messages and recover stale connections.
 	 */
 	function setupHeartbeat(): void {
 		if (heartbeatTimer) {
 			clearInterval(heartbeatTimer);
 		}
 
+		const staleAfterMs = config.heartbeatInterval * 2 + 5000;
+		const checkIntervalMs = Math.max(5000, Math.min(config.heartbeatInterval, 15000));
 		heartbeatTimer = setInterval(() => {
-			if (eventSource?.readyState === EventSource.OPEN) {
-				// Connection is still open, update activity
-				debug('Heartbeat check - connection alive');
+			if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
+				return;
 			}
-		}, config.heartbeatInterval);
+
+			const elapsedMs = Date.now() - lastServerActivity;
+			if (elapsedMs <= staleAfterMs) {
+				return;
+			}
+
+			const elapsedSeconds = Math.floor(elapsedMs / 1000);
+			error = createSSEError('timeout', `No SSE activity for ${elapsedSeconds}s`);
+			debug('Heartbeat timeout detected, reconnecting', { elapsedMs, staleAfterMs });
+			handlers.error?.(error);
+			closeConnection();
+			scheduleReconnect();
+		}, checkIntervalMs);
 	}
 
 	/**
@@ -142,6 +186,7 @@ export function createSSE<T = Record<string, unknown>>(
 				eventSource.removeEventListener(event, handler as EventListener);
 			}
 			activeListeners.length = 0;
+			eventSource.onerror = null;
 
 			eventSource.close();
 			eventSource = null;
@@ -199,6 +244,7 @@ export function createSSE<T = Record<string, unknown>>(
 					debug('Using shared connection');
 					eventSource = shared.eventSource;
 					setStatus('connected');
+					markServerActivity();
 					setupHeartbeat();
 					return;
 				}
@@ -219,6 +265,7 @@ export function createSSE<T = Record<string, unknown>>(
 				setStatus('connected');
 				reconnectCount = 0;
 				error = null;
+				markServerActivity();
 				setupHeartbeat();
 			};
 			eventSource.addEventListener('open', onOpen);
@@ -226,6 +273,7 @@ export function createSSE<T = Record<string, unknown>>(
 
 			// Handle connected event (custom)
 			const onConnected = (e: MessageEvent) => {
+				markServerActivity();
 				try {
 					const data = JSON.parse(e.data) as SSEConnectedEvent;
 					debug('Connected event:', data);
@@ -239,6 +287,7 @@ export function createSSE<T = Record<string, unknown>>(
 
 			// Handle heartbeat
 			const onHeartbeat = (e: MessageEvent) => {
+				markServerActivity();
 				try {
 					const data = JSON.parse(e.data) as SSEHeartbeatEvent;
 					handlers.heartbeat?.(data);
@@ -256,6 +305,7 @@ export function createSSE<T = Record<string, unknown>>(
 				}
 
 				const listener = (e: MessageEvent) => {
+					markServerActivity();
 					try {
 						const data = JSON.parse(e.data);
 						debug(`Event: ${eventName}`, data);
@@ -286,25 +336,7 @@ export function createSSE<T = Record<string, unknown>>(
 				// Close current connection
 				closeConnection();
 
-				// Check if we should retry
-				if (reconnectCount < config.maxRetries) {
-					setStatus('error');
-
-					const delay = getBackoffDelay(reconnectCount, config.baseDelay, config.maxDelay);
-					debug(`Reconnecting in ${delay}ms (attempt ${reconnectCount + 1})`);
-
-					reconnectTimer = setTimeout(() => {
-						reconnectCount++;
-						connect();
-					}, delay);
-				} else {
-					debug('Max retries reached, giving up');
-					setStatus('error');
-					maxRetriesExceeded = true;
-					if (config.shared) {
-						openCircuit(url, config.circuitBreakerTimeout);
-					}
-				}
+				scheduleReconnect();
 			};
 		} catch (err) {
 			debug('Failed to create EventSource:', err);
@@ -312,6 +344,7 @@ export function createSSE<T = Record<string, unknown>>(
 			error = createSSEError('client', message);
 			setStatus('error');
 			handlers.error?.(error);
+			scheduleReconnect();
 		}
 	}
 
@@ -336,16 +369,17 @@ export function createSSE<T = Record<string, unknown>>(
 	}
 
 	// Main connection lifecycle using SvelteKit navigation hooks
-	// Connect AFTER navigation completes to avoid "interrupted while loading" errors
+	// Connect AFTER navigation completes so query/tab navigation can recover if needed.
 	afterNavigate(() => {
 		if (!browser) return;
 		connect();
 	});
 
-	// Close connection BEFORE navigation starts to prevent interrupted connections
-	beforeNavigate(() => {
-		isManuallyClosed = true;
-		closeConnection();
+	// Only force-close on full page unload; in-app navigation should not disable reconnect.
+	beforeNavigate((navigation) => {
+		if (navigation.willUnload) {
+			closeConnection();
+		}
 	});
 
 	// Cleanup on component destroy (for non-navigation scenarios)

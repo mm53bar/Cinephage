@@ -9,15 +9,7 @@ import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import * as schema from '$lib/server/db/schema';
 import { syncSchema } from '$lib/server/db/schema-sync';
-import { existsSync, unlinkSync, mkdirSync } from 'node:fs';
 import { vi } from 'vitest';
-
-const TEST_DB_PATH = 'data/test-cinephage.db';
-
-// Ensure data directory exists
-if (!existsSync('data')) {
-	mkdirSync('data', { recursive: true });
-}
 
 // Singleton state - initialized lazily
 let testSqlite: ReturnType<typeof Database> | null = null;
@@ -37,17 +29,8 @@ export function initTestDb() {
 		}
 	}
 
-	// Delete existing test database
-	if (existsSync(TEST_DB_PATH)) {
-		try {
-			unlinkSync(TEST_DB_PATH);
-		} catch {
-			// Ignore
-		}
-	}
-
-	// Create new database
-	testSqlite = new Database(TEST_DB_PATH);
+	// Create isolated in-memory database for this test context
+	testSqlite = new Database(':memory:');
 	testDb = drizzle(testSqlite, { schema });
 
 	// Sync schema to create tables
@@ -81,15 +64,6 @@ export function closeTestDb() {
 		testSqlite = null;
 		testDb = null;
 		initialized = false;
-	}
-
-	// Optionally delete the test database file
-	if (existsSync(TEST_DB_PATH)) {
-		try {
-			unlinkSync(TEST_DB_PATH);
-		} catch {
-			// Ignore errors during cleanup
-		}
 	}
 }
 

@@ -20,9 +20,7 @@ import { eq } from 'drizzle-orm';
 initTestDb();
 
 // Must mock before importing the handlers
-vi.mock('$lib/server/db', async () => {
-	// Dynamic import to get the actual test db
-	const { getTestDb } = await import('../../../test/db-helper');
+vi.mock('$lib/server/db', () => {
 	return {
 		get db() {
 			return getTestDb().db;

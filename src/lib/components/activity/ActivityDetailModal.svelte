@@ -1,11 +1,16 @@
 <script lang="ts">
-	import type { UnifiedActivity, ActivityDetails } from '$lib/types/activity';
+	import {
+		isImportFailedActivity,
+		type UnifiedActivity,
+		type ActivityDetails
+	} from '$lib/types/activity';
 	import { formatBytes } from '$lib/utils/format';
 	import {
 		X,
 		CheckCircle2,
 		XCircle,
 		Loader2,
+		Upload,
 		PauseCircle,
 		AlertCircle,
 		Minus,
@@ -52,6 +57,7 @@
 		imported: { label: 'Imported', variant: 'badge-success', icon: CheckCircle2 },
 		streaming: { label: 'Streaming', variant: 'badge-info', icon: CheckCircle2 },
 		downloading: { label: 'Downloading', variant: 'badge-info', icon: Loader2 },
+		seeding: { label: 'Seeding', variant: 'badge-success', icon: Upload },
 		paused: { label: 'Paused', variant: 'badge-warning', icon: PauseCircle },
 		failed: { label: 'Failed', variant: 'badge-error', icon: XCircle },
 		rejected: { label: 'Rejected', variant: 'badge-warning', icon: AlertCircle },
@@ -59,6 +65,14 @@
 		no_results: { label: 'No Results', variant: 'badge-ghost', icon: Minus },
 		searching: { label: 'Searching', variant: 'badge-info', icon: Loader2 }
 	};
+
+	function getStatusLabel(activity: UnifiedActivity): string {
+		if (activity.status === 'failed' && isImportFailedActivity(activity)) {
+			return 'Import Failed';
+		}
+
+		return statusConfig[activity.status]?.label ?? activity.status;
+	}
 
 	function formatRelativeTime(dateStr: string): string {
 		const date = new Date(dateStr);
@@ -126,7 +140,11 @@
 		actionLoading = true;
 		try {
 			await onRetry(activity.queueItemId);
-			toasts.success('Download retry initiated');
+			toasts.success(
+				activity.status === 'failed' && isImportFailedActivity(activity)
+					? 'Import retry initiated'
+					: 'Download retry initiated'
+			);
 		} catch (error) {
 			console.error('Failed to retry download:', error);
 			const message = error instanceof Error ? error.message : 'Failed to retry download';
@@ -280,8 +298,12 @@
 					{@const config = statusConfig[activity.status]}
 					<div class="mt-4 flex items-center gap-3">
 						<span class="badge gap-2 {config.variant} badge-lg">
-							<config.icon class="h-4 w-4" />
-							{config.label}
+							<config.icon
+								class="h-4 w-4 {activity.status === 'downloading' || activity.status === 'searching'
+									? 'animate-spin'
+									: ''}"
+							/>
+							{getStatusLabel(activity)}
 							{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
 								({activity.downloadProgress}%)
 							{/if}
@@ -298,7 +320,7 @@
 				<!-- Queue Actions -->
 				{#if activity.queueItemId}
 					<div class="mt-4 flex flex-wrap gap-2">
-						{#if activity.status === 'downloading'}
+						{#if activity.status === 'downloading' || activity.status === 'seeding'}
 							<button class="btn btn-ghost btn-sm" onclick={handlePause} disabled={actionLoading}>
 								<Pause class="h-4 w-4" />
 								Pause
@@ -312,7 +334,7 @@
 						{#if activity.status === 'failed'}
 							<button class="btn btn-ghost btn-sm" onclick={handleRetry} disabled={actionLoading}>
 								<RotateCcw class="h-4 w-4" />
-								Retry
+								{isImportFailedActivity(activity) ? 'Retry Import' : 'Retry'}
 							</button>
 						{/if}
 						<button
@@ -383,9 +405,7 @@
 								</div>
 								<div class="space-y-1">
 									<span class="text-sm text-base-content/60">Status</span>
-									<p class="font-medium">
-										{statusConfig[activity.status]?.label ?? activity.status}
-									</p>
+									<p class="font-medium">{getStatusLabel(activity)}</p>
 								</div>
 								<div class="space-y-1">
 									<span class="text-sm text-base-content/60">Size</span>

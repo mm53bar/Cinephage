@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
-	import type { UnifiedActivity } from '$lib/types/activity';
+	import { isImportFailedActivity, type UnifiedActivity } from '$lib/types/activity';
 	import {
 		CheckCircle2,
 		XCircle,
 		AlertCircle,
 		Loader2,
+		Upload,
 		Pause,
 		Play,
 		RotateCcw,
@@ -131,6 +132,7 @@
 		imported: { label: 'Imported', variant: 'badge-success', icon: CheckCircle2 },
 		streaming: { label: 'Streaming', variant: 'badge-info', icon: CheckCircle2 },
 		downloading: { label: 'Downloading', variant: 'badge-info', icon: Loader2 },
+		seeding: { label: 'Seeding', variant: 'badge-success', icon: Upload },
 		paused: { label: 'Paused', variant: 'badge-warning', icon: Pause },
 		failed: { label: 'Failed', variant: 'badge-error', icon: XCircle },
 		rejected: { label: 'Rejected', variant: 'badge-warning', icon: AlertCircle },
@@ -191,6 +193,13 @@
 		return null;
 	}
 
+	function getStatusLabel(activity: UnifiedActivity, fallbackLabel: string): string {
+		if (activity.status === 'failed' && isImportFailedActivity(activity)) {
+			return 'Import Failed';
+		}
+		return fallbackLabel;
+	}
+
 	async function runQueueAction(
 		activity: UnifiedActivity,
 		action: 'pause' | 'resume' | 'remove' | 'retry'
@@ -214,7 +223,13 @@
 			if (action === 'pause') toasts.success('Download paused');
 			if (action === 'resume') toasts.success('Download resumed');
 			if (action === 'remove') toasts.success('Download removed');
-			if (action === 'retry') toasts.success('Download retry initiated');
+			if (action === 'retry') {
+				toasts.success(
+					activity.status === 'failed' && isImportFailedActivity(activity)
+						? 'Import retry initiated'
+						: 'Download retry initiated'
+				);
+			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : `Failed to ${action} download`;
 			toasts.error(message);
@@ -268,7 +283,7 @@
 						{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
 							{activity.downloadProgress}%
 						{:else}
-							{config.label}
+							{getStatusLabel(activity, config.label)}
 						{/if}
 					</span>
 					<div class="flex items-center gap-2">
@@ -392,7 +407,7 @@
 
 				{#if activity.queueItemId}
 					<div class="mt-3 flex flex-wrap gap-2">
-						{#if activity.status === 'downloading'}
+						{#if activity.status === 'downloading' || activity.status === 'seeding'}
 							<button
 								class="btn btn-ghost btn-xs"
 								onclick={() => runQueueAction(activity, 'pause')}
@@ -419,7 +434,7 @@
 								disabled={isQueueActionLoading}
 							>
 								<RotateCcw class="h-3.5 w-3.5" />
-								Retry
+								{isImportFailedActivity(activity) ? 'Retry Import' : 'Retry'}
 							</button>
 						{/if}
 
@@ -479,7 +494,7 @@
 									type="checkbox"
 									class="checkbox checkbox-xs"
 									checked={allSelectableSelected}
-									aria-label="Select all visible history rows"
+									aria-label="Select all visible rows"
 									onclick={(e) => {
 										e.stopPropagation();
 										toggleSelectionAll(!allSelectableSelected);
@@ -610,7 +625,7 @@
 								{#if activity.status === 'downloading' && activity.downloadProgress !== undefined}
 									{activity.downloadProgress}%
 								{:else}
-									{config.label}
+									{getStatusLabel(activity, config.label)}
 								{/if}
 							</span>
 						</td>
@@ -729,7 +744,7 @@
 									{activity.statusReason}
 								</span>
 							{:else}
-								<span class="text-sm">{config.label}</span>
+								<span class="text-sm">{getStatusLabel(activity, config.label)}</span>
 							{/if}
 						</td>
 

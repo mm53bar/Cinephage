@@ -60,7 +60,8 @@ import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
 import {
 	getMediaParseStem,
 	matchEpisodesByIdentifier,
-	resolveTvEpisodeIdentifier
+	resolveTvEpisodeIdentifier,
+	type ResolvedTvEpisodeIdentifier
 } from '$lib/server/library/tv-episode-resolver.js';
 
 /**
@@ -1227,7 +1228,10 @@ export class ImportService extends EventEmitter {
 			.select()
 			.from(episodes)
 			.where(eq(episodes.seriesId, seriesData.id));
-		const matchingEpisodes = matchEpisodesByIdentifier(seriesEpisodes, identifier);
+		let matchingEpisodes = matchEpisodesByIdentifier(seriesEpisodes, identifier);
+		if (matchingEpisodes.length === 0) {
+			matchingEpisodes = this.matchEpisodesFromQueueContext(seriesEpisodes, queueItem, identifier);
+		}
 		if (matchingEpisodes.length === 0) {
 			return {
 				success: false,
@@ -1426,6 +1430,59 @@ export class ImportService extends EventEmitter {
 			releaseGroup: fileData.releaseGroup,
 			quality: fileData.quality
 		};
+	}
+
+	/**
+	 * Fallback matcher for releases that reset season episode numbering (e.g., E01..E16)
+	 * while the library stores global episode numbers for that season (e.g., E62..E77).
+	 *
+	 * Uses queueItem.episodeIds ordering context to map parsed episode indices.
+	 */
+	private matchEpisodesFromQueueContext(
+		seriesEpisodes: Array<typeof episodes.$inferSelect>,
+		queueItem: Pick<typeof downloadQueue.$inferSelect, 'episodeIds' | 'seasonNumber'>,
+		identifier: ResolvedTvEpisodeIdentifier
+	): Array<typeof episodes.$inferSelect> {
+		if (identifier.numbering !== 'standard') {
+			return [];
+		}
+
+		const queuedEpisodeIds = queueItem.episodeIds ?? [];
+		if (queuedEpisodeIds.length === 0) {
+			return [];
+		}
+
+		const targetSeason = queueItem.seasonNumber ?? identifier.seasonNumber;
+		if (targetSeason === undefined || targetSeason === null) {
+			return [];
+		}
+
+		// Require season alignment before applying relative index mapping.
+		if (identifier.seasonNumber !== targetSeason) {
+			return [];
+		}
+
+		const queuedEpisodesInSeason = seriesEpisodes
+			.filter(
+				(episode) => queuedEpisodeIds.includes(episode.id) && episode.seasonNumber === targetSeason
+			)
+			.sort((a, b) => a.episodeNumber - b.episodeNumber);
+
+		if (queuedEpisodesInSeason.length === 0) {
+			return [];
+		}
+
+		const resolved = identifier.episodeNumbers
+			.map((episodeNumber) => queuedEpisodesInSeason[episodeNumber - 1])
+			.filter((episode): episode is typeof episodes.$inferSelect => Boolean(episode));
+
+		if (resolved.length !== identifier.episodeNumbers.length) {
+			return [];
+		}
+
+		// Deduplicate in case a release token repeats an episode number.
+		const uniqueById = new Map(resolved.map((episode) => [episode.id, episode]));
+		return [...uniqueById.values()];
 	}
 
 	/**

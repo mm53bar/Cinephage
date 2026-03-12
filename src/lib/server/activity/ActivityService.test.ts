@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ActivityFilters, UnifiedActivity } from '$lib/types/activity';
 import { ActivityService } from './ActivityService';
-import type { DownloadHistoryRecord } from './types';
+import type { DownloadHistoryRecord, DownloadQueueRecord } from './types';
 
 function createActivity(id: string, overrides: Partial<UnifiedActivity> = {}): UnifiedActivity {
 	return {
@@ -57,6 +57,50 @@ function createHistoryRecord(
 		completedAt: null,
 		importedAt: null,
 		createdAt: '2026-02-09T00:00:00.000Z',
+		...overrides
+	};
+}
+
+function createQueueRecord(
+	id: string,
+	overrides: Partial<DownloadQueueRecord> = {}
+): DownloadQueueRecord {
+	return {
+		id,
+		downloadClientId: 'client-1',
+		downloadId: 'queue-download-id',
+		infoHash: 'queue-info-hash',
+		title: 'Example.Movie.2025.1080p.WEB-DL-GRP',
+		indexerId: null,
+		indexerName: null,
+		downloadUrl: null,
+		magnetUrl: null,
+		protocol: 'usenet',
+		movieId: null,
+		seriesId: null,
+		episodeIds: null,
+		seasonNumber: null,
+		status: 'downloading',
+		progress: '0.5',
+		size: null,
+		downloadSpeed: 0,
+		uploadSpeed: 0,
+		eta: null,
+		ratio: '0',
+		clientDownloadPath: null,
+		outputPath: null,
+		importedPath: null,
+		quality: null,
+		addedAt: '2026-02-09T00:00:00.000Z',
+		startedAt: null,
+		completedAt: null,
+		importedAt: null,
+		errorMessage: null,
+		importAttempts: 0,
+		lastAttemptAt: null,
+		isAutomatic: false,
+		isUpgrade: false,
+		releaseGroup: null,
 		...overrides
 	};
 }
@@ -213,5 +257,209 @@ describe('ActivityService failed activity retry linking', () => {
 
 		expect(activity).not.toBeNull();
 		expect(activity?.queueItemId).toBe('queue-abc');
+	});
+
+	it('suppresses failed history activity when matching queue item is active after retry', () => {
+		const service = ActivityService.getInstance();
+		const history = createHistoryRecord('history-failed-duplicate', {
+			status: 'failed',
+			title: 'ONE.PIECE.S09E264.1080p.NF.WEB-DL.AAC2.0.H.264-7SPRITE7',
+			seriesId: 'series-1',
+			episodeIds: ['episode-264'],
+			seasonNumber: 9,
+			downloadId: 'old-download-id',
+			grabbedAt: '2026-03-12T01:00:00.000Z'
+		});
+		const activeQueue = createQueueRecord('queue-active-1', {
+			status: 'downloading',
+			title: 'One.Piece.S09E264.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7',
+			seriesId: 'series-1',
+			episodeIds: ['episode-264'],
+			seasonNumber: 9,
+			downloadId: 'new-download-id',
+			addedAt: '2026-03-12T01:00:00.000Z'
+		});
+
+		const activity = service.transformHistoryItem(
+			history,
+			{ movies: new Map(), series: new Map(), episodes: new Map() },
+			[activeQueue],
+			new Map([['download:old-download-id', 'queue-failed-stale']])
+		);
+
+		expect(activity).toBeNull();
+	});
+
+	it('suppresses duplicate when release title matches but queue row has no media linkage', () => {
+		const service = ActivityService.getInstance();
+		const history = createHistoryRecord('history-failed-title-fallback', {
+			status: 'failed',
+			title: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7',
+			seriesId: 'series-1',
+			episodeIds: ['episode-1', 'episode-2'],
+			seasonNumber: 8,
+			protocol: 'usenet'
+		});
+		const activeQueue = createQueueRecord('queue-active-title-fallback', {
+			status: 'downloading',
+			title: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7',
+			seriesId: null,
+			episodeIds: null,
+			seasonNumber: null,
+			protocol: 'usenet'
+		});
+
+		const activity = service.transformHistoryItem(
+			history,
+			{ movies: new Map(), series: new Map(), episodes: new Map() },
+			[activeQueue]
+		);
+
+		expect(activity).toBeNull();
+	});
+
+	it('suppresses duplicate when queue keeps series linkage but has no episode linkage', () => {
+		const service = ActivityService.getInstance();
+		const history = createHistoryRecord('history-failed-series-only-queue', {
+			status: 'failed',
+			title: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7',
+			seriesId: 'series-1',
+			episodeIds: ['episode-1', 'episode-2'],
+			seasonNumber: 8,
+			protocol: 'usenet'
+		});
+		const activeQueue = createQueueRecord('queue-active-series-only-queue', {
+			status: 'downloading',
+			title: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7',
+			seriesId: 'series-1',
+			episodeIds: null,
+			seasonNumber: null,
+			protocol: 'usenet'
+		});
+
+		const activity = service.transformHistoryItem(
+			history,
+			{ movies: new Map(), series: new Map(), episodes: new Map() },
+			[activeQueue]
+		);
+
+		expect(activity).toBeNull();
+	});
+
+	it('suppresses duplicate when download client id matches even if metadata drifts', () => {
+		const service = ActivityService.getInstance();
+		const history = createHistoryRecord('history-failed-downloadid-match', {
+			status: 'failed',
+			title: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7',
+			downloadId: 'client-item-123',
+			seriesId: 'series-1',
+			episodeIds: ['episode-1']
+		});
+		const activeQueue = createQueueRecord('queue-active-downloadid-match', {
+			status: 'downloading',
+			title: 'nzb_1718732672.nzb',
+			downloadId: 'client-item-123',
+			seriesId: null,
+			episodeIds: null,
+			seasonNumber: null
+		});
+
+		const activity = service.transformHistoryItem(
+			history,
+			{ movies: new Map(), series: new Map(), episodes: new Map() },
+			[activeQueue]
+		);
+
+		expect(activity).toBeNull();
+	});
+
+	it('suppresses duplicate when title drifts but series and grabbed timestamp still match', () => {
+		const service = ActivityService.getInstance();
+		const history = createHistoryRecord('history-failed-title-drift-grabbed', {
+			status: 'failed',
+			title: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7',
+			seriesId: 'series-1',
+			episodeIds: ['episode-1', 'episode-2'],
+			seasonNumber: 8,
+			grabbedAt: '2026-03-12T01:00:00.000Z'
+		});
+		const activeQueue = createQueueRecord('queue-active-title-drift-grabbed', {
+			status: 'downloading',
+			title: 'nzb_1718732672.nzb',
+			seriesId: 'series-1',
+			episodeIds: null,
+			seasonNumber: null,
+			addedAt: '2026-03-12T01:00:00.000Z'
+		});
+
+		const activity = service.transformHistoryItem(
+			history,
+			{ movies: new Map(), series: new Map(), episodes: new Map() },
+			[activeQueue]
+		);
+
+		expect(activity).toBeNull();
+	});
+});
+
+describe('ActivityService active dedupe', () => {
+	it('prefers active queue row over failed duplicate rows for same release/media', () => {
+		const service = ActivityService.getInstance() as unknown as {
+			dedupeActiveActivities: (activities: UnifiedActivity[]) => UnifiedActivity[];
+		};
+
+		const duplicateFailedHistory = createActivity('history-failed-1', {
+			status: 'failed',
+			releaseTitle: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7',
+			seriesId: 'series-1',
+			seasonNumber: 8,
+			episodeIds: ['episode-1', 'episode-2'],
+			queueItemId: 'queue-old'
+		});
+
+		const activeQueue = createActivity('queue-active-1', {
+			status: 'downloading',
+			releaseTitle: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7',
+			seriesId: 'series-1',
+			seasonNumber: 8,
+			episodeIds: ['episode-1', 'episode-2'],
+			queueItemId: 'queue-new',
+			startedAt: '2026-03-12T05:30:00.000Z'
+		});
+
+		const deduped = service.dedupeActiveActivities([duplicateFailedHistory, activeQueue]);
+		expect(deduped).toHaveLength(1);
+		expect(deduped[0].id).toBe('queue-active-1');
+	});
+
+	it('dedupes series rows when one side lacks episode ids', () => {
+		const service = ActivityService.getInstance() as unknown as {
+			dedupeActiveActivities: (activities: UnifiedActivity[]) => UnifiedActivity[];
+		};
+
+		const failedHistory = createActivity('history-failed-series-no-episodes', {
+			status: 'failed',
+			mediaType: 'episode',
+			mediaId: '',
+			seriesId: 'series-1',
+			seasonNumber: 8,
+			episodeIds: ['episode-1', 'episode-2'],
+			releaseTitle: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7'
+		});
+
+		const activeQueue = createActivity('queue-active-series-no-episodes', {
+			status: 'downloading',
+			id: 'queue-active-series-no-episodes',
+			mediaType: 'episode',
+			mediaId: '',
+			seriesId: 'series-1',
+			seasonNumber: undefined,
+			episodeIds: undefined,
+			releaseTitle: 'One.Piece.S08.1080p.NF.WEB-DL.AAC2.0.H.264-7sprite7'
+		});
+
+		const deduped = service.dedupeActiveActivities([failedHistory, activeQueue]);
+		expect(deduped).toHaveLength(1);
+		expect(deduped[0].id).toBe('queue-active-series-no-episodes');
 	});
 });

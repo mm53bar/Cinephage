@@ -12,12 +12,52 @@ export type ActivityStatus =
 	| 'imported' // Successfully imported to library
 	| 'streaming' // Streaming source (no download)
 	| 'downloading' // Currently downloading
+	| 'seeding' // Download complete, still seeding
 	| 'paused' // Download paused
 	| 'failed' // Download or import failed
 	| 'rejected' // Release rejected (quality, blocklist, etc.)
 	| 'removed' // Removed from queue
 	| 'no_results' // Search found no results
 	| 'searching'; // Search in progress
+
+/**
+ * Activity view scope
+ */
+export type ActivityScope = 'all' | 'active' | 'history';
+
+const ACTIVE_ACTIVITY_STATUSES: ActivityStatus[] = [
+	'downloading',
+	'seeding',
+	'paused',
+	'searching'
+];
+
+/**
+ * Determine whether an activity should be treated as active in UI and API views.
+ */
+export function isActiveActivity(
+	activity: Pick<UnifiedActivity, 'status' | 'queueItemId'>
+): boolean {
+	if (ACTIVE_ACTIVITY_STATUSES.includes(activity.status)) {
+		return true;
+	}
+
+	// Failed queue-backed entries can still be retried through queue actions.
+	return activity.status === 'failed' && Boolean(activity.queueItemId);
+}
+
+/**
+ * Determine whether a failed activity represents an import-phase failure.
+ * These failures should retry import instead of re-downloading when possible.
+ */
+export function isImportFailedActivity(
+	activity: Pick<UnifiedActivity, 'status' | 'completedAt' | 'statusReason'>
+): boolean {
+	if (activity.status !== 'failed') return false;
+
+	const reason = activity.statusReason?.toLowerCase() ?? '';
+	return Boolean(activity.completedAt) || reason.includes('import');
+}
 
 /**
  * Activity event types for timeline

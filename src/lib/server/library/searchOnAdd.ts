@@ -90,6 +90,12 @@ interface SearchForSeasonParams {
 interface SearchForMissingEpisodesOptions {
 	/** Bypass monitoring checks for manual user-triggered searches */
 	bypassMonitoring?: boolean;
+	/**
+	 * Search strategy for missing episodes.
+	 * - 'pack-first': complete/multi-season/single-season packs, then episodes
+	 * - 'episode-only': only targeted episode searches (no pack queries)
+	 */
+	searchStrategy?: 'pack-first' | 'episode-only';
 }
 
 /** Result for a single item in multi-search operations */
@@ -889,11 +895,12 @@ class SearchOnAddService {
 		) => void,
 		options: SearchForMissingEpisodesOptions = {}
 	): Promise<MultiSearchResult> {
-		const { bypassMonitoring = false } = options;
+		const { bypassMonitoring = false, searchStrategy = 'pack-first' } = options;
 
 		logger.info('[SearchOnAdd] Starting missing episodes search with multi-season strategy', {
 			seriesId,
-			bypassMonitoring
+			bypassMonitoring,
+			searchStrategy
 		});
 
 		try {
@@ -976,6 +983,92 @@ class SearchOnAddService {
 				hasFile: ep.hasFile,
 				monitored: ep.monitored
 			}));
+
+			if (searchStrategy === 'episode-only') {
+				const sortedEpisodes = [...episodesToSearch].sort(
+					(a, b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber
+				);
+
+				onProgress?.({
+					phase: 'initializing',
+					message: `Preparing ${sortedEpisodes.length} missing episodes for targeted search...`,
+					percentComplete: 5,
+					details: {
+						releaseType: 'episode',
+						episodeCount: sortedEpisodes.length
+					}
+				});
+
+				const results: AutoSearchItemResult[] = [];
+				let foundCount = 0;
+				let grabbedCount = 0;
+
+				for (let i = 0; i < sortedEpisodes.length; i++) {
+					const episode = sortedEpisodes[i];
+					const episodeLabel = `S${episode.seasonNumber.toString().padStart(2, '0')}E${episode.episodeNumber
+						.toString()
+						.padStart(2, '0')}`;
+
+					onProgress?.({
+						phase: 'individual_episode_search',
+						message: `Searching ${episodeLabel}...`,
+						percentComplete: Math.min(95, 10 + Math.round(((i + 1) / sortedEpisodes.length) * 80)),
+						currentItem: episodeLabel,
+						details: {
+							releaseType: 'episode',
+							decision: 'pending'
+						}
+					});
+
+					const searchResult = await this.searchForEpisode({
+						episodeId: episode.id,
+						bypassMonitoring
+					});
+
+					const wasGrabbed = searchResult.success && !!searchResult.releaseName;
+					const wasFound = wasGrabbed;
+
+					if (wasFound) {
+						foundCount++;
+					}
+					if (wasGrabbed) {
+						grabbedCount++;
+					}
+
+					results.push({
+						itemId: episode.id,
+						itemLabel: episodeLabel,
+						found: wasFound,
+						grabbed: wasGrabbed,
+						releaseName: searchResult.releaseName,
+						error: wasGrabbed ? undefined : (searchResult.error ?? 'No suitable releases found')
+					});
+				}
+
+				onProgress?.({
+					phase: 'complete',
+					message: `Search complete: ${grabbedCount}/${sortedEpisodes.length} episodes grabbed`,
+					percentComplete: 100
+				});
+
+				logger.info('[SearchOnAdd] Missing episodes targeted search completed', {
+					seriesId,
+					searched: sortedEpisodes.length,
+					found: foundCount,
+					grabbed: grabbedCount
+				});
+
+				return {
+					results,
+					summary: {
+						searched: sortedEpisodes.length,
+						found: foundCount,
+						grabbed: grabbedCount,
+						seasonPacksGrabbed: 0,
+						individualEpisodesGrabbed: grabbedCount
+					}
+				};
+			}
 
 			// Use multi-season search strategy
 			const { getMultiSeasonSearchStrategy } =

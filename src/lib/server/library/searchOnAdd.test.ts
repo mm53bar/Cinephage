@@ -468,4 +468,87 @@ describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () =
 			})
 		);
 	});
+
+	it('uses episode-only strategy when requested for manual missing auto-grab', async () => {
+		mocks.seriesFindFirst.mockResolvedValue({
+			id: 'series-1',
+			title: 'Afro Samurai',
+			tmdbId: 19544,
+			tvdbId: 79755,
+			imdbId: 'tt0465316',
+			scoringProfileId: 'streamer'
+		});
+		mocks.episodesFindMany.mockResolvedValue([
+			{
+				id: 'ep-1',
+				seriesId: 'series-1',
+				seasonNumber: 1,
+				episodeNumber: 1,
+				hasFile: false,
+				monitored: false,
+				airDate: '2007-01-03'
+			},
+			{
+				id: 'ep-2',
+				seriesId: 'series-1',
+				seasonNumber: 1,
+				episodeNumber: 2,
+				hasFile: false,
+				monitored: true,
+				airDate: '2007-01-10'
+			}
+		]);
+
+		const searchForEpisodeSpy = vi
+			.spyOn(searchOnAdd, 'searchForEpisode')
+			.mockResolvedValueOnce({
+				success: true,
+				releaseName: 'Afro.Samurai.S01E01.1080p.WEB.H264-GROUP'
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				error: 'No suitable releases found'
+			});
+
+		const result = await searchOnAdd.searchForMissingEpisodes('series-1', undefined, {
+			bypassMonitoring: true,
+			searchStrategy: 'episode-only'
+		});
+
+		expect(mocks.searchWithMultiSeasonPriority).not.toHaveBeenCalled();
+		expect(searchForEpisodeSpy).toHaveBeenCalledTimes(2);
+		expect(searchForEpisodeSpy).toHaveBeenNthCalledWith(1, {
+			episodeId: 'ep-1',
+			bypassMonitoring: true
+		});
+		expect(searchForEpisodeSpy).toHaveBeenNthCalledWith(2, {
+			episodeId: 'ep-2',
+			bypassMonitoring: true
+		});
+		expect(result.summary).toEqual({
+			searched: 2,
+			found: 1,
+			grabbed: 1,
+			seasonPacksGrabbed: 0,
+			individualEpisodesGrabbed: 1
+		});
+		expect(result.results).toEqual([
+			{
+				itemId: 'ep-1',
+				itemLabel: 'S01E01',
+				found: true,
+				grabbed: true,
+				releaseName: 'Afro.Samurai.S01E01.1080p.WEB.H264-GROUP',
+				error: undefined
+			},
+			{
+				itemId: 'ep-2',
+				itemLabel: 'S01E02',
+				found: false,
+				grabbed: false,
+				releaseName: undefined,
+				error: 'No suitable releases found'
+			}
+		]);
+	});
 });

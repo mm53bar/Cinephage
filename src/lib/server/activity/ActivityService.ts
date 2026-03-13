@@ -549,6 +549,7 @@ export class ActivityService {
 			timeline,
 			startedAt: download.addedAt || new Date().toISOString(),
 			completedAt: download.completedAt ?? null,
+			lastAttemptAt: download.lastAttemptAt ?? null,
 			queueItemId: download.id
 		};
 	}
@@ -1114,6 +1115,14 @@ export class ActivityService {
 		}
 		if (download.startedAt) {
 			timeline.push({ type: 'downloading', timestamp: download.startedAt });
+		}
+
+		if (download.status === 'failed' && download.lastAttemptAt) {
+			timeline.push({
+				type: 'failed',
+				timestamp: download.lastAttemptAt,
+				details: download.errorMessage ?? undefined
+			});
 		}
 
 		// Sort by timestamp

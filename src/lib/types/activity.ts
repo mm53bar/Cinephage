@@ -130,6 +130,7 @@ export interface UnifiedActivity {
 	// Timestamps
 	startedAt: string;
 	completedAt: string | null;
+	lastAttemptAt?: string | null; // Updated on each retry attempt
 
 	// Links
 	queueItemId?: string; // Link to current queue item if downloading

@@ -1197,6 +1197,58 @@ export class ImportService extends EventEmitter {
 	/**
 	 * Import a single episode file
 	 */
+	private resolveEpisodeIdentifierWithFallback(
+		videoFilePath: string,
+		queueItem: Pick<typeof downloadQueue.$inferSelect, 'title' | 'seasonNumber'>,
+		seriesType: 'standard' | 'anime' | 'daily'
+	): ResolvedTvEpisodeIdentifier | null {
+		const seasonHint = queueItem.seasonNumber ?? undefined;
+		const candidates: Array<{
+			source: 'file' | 'queueTitle' | 'parentFolder';
+			value?: string | null;
+		}> = [
+			{ source: 'file', value: videoFilePath },
+			{ source: 'queueTitle', value: queueItem.title },
+			{ source: 'parentFolder', value: basename(dirname(videoFilePath)) }
+		];
+		const seenStems = new Set<string>();
+
+		for (const candidate of candidates) {
+			if (!candidate.value) continue;
+			const stem = getMediaParseStem(candidate.value);
+			const normalizedStem = stem.trim().toLowerCase();
+			if (!normalizedStem || seenStems.has(normalizedStem)) {
+				continue;
+			}
+			seenStems.add(normalizedStem);
+
+			const parsed = this.parser.parse(stem);
+			const identifier = resolveTvEpisodeIdentifier({
+				filePath: videoFilePath,
+				fileName: stem,
+				parsed,
+				seasonHint,
+				seriesType
+			});
+
+			if (!identifier) {
+				continue;
+			}
+
+			if (candidate.source !== 'file') {
+				logger.info('[ImportService] Resolved episode identifier from fallback context', {
+					sourcePath: videoFilePath,
+					fallbackSource: candidate.source,
+					fallbackToken: stem
+				});
+			}
+
+			return identifier;
+		}
+
+		return null;
+	}
+
 	private async importEpisodeFile(
 		videoFile: { path: string; size: number },
 		seriesData: typeof series.$inferSelect,
@@ -1204,19 +1256,22 @@ export class ImportService extends EventEmitter {
 		queueItem: typeof downloadQueue.$inferSelect,
 		canMoveFiles: boolean
 	): Promise<ImportResult> {
-		// Parse episode info from filename
-		const parsed = this.parser.parse(getMediaParseStem(videoFile.path));
-		const identifier = resolveTvEpisodeIdentifier({
-			filePath: videoFile.path,
-			parsed,
-			seasonHint: queueItem.seasonNumber ?? undefined,
-			seriesType:
-				seriesData.seriesType === 'anime' || seriesData.seriesType === 'daily'
-					? seriesData.seriesType
-					: 'standard'
-		});
+		const normalizedSeriesType =
+			seriesData.seriesType === 'anime' || seriesData.seriesType === 'daily'
+				? seriesData.seriesType
+				: 'standard';
 
-		if (!identifier) {
+		// Parse episode info from filename/release context (fallbacks handle obfuscated basenames).
+		const resolvedIdentifier = this.resolveEpisodeIdentifierWithFallback(
+			videoFile.path,
+			{
+				title: queueItem.title,
+				seasonNumber: queueItem.seasonNumber
+			},
+			normalizedSeriesType
+		);
+
+		if (!resolvedIdentifier) {
 			return {
 				success: false,
 				sourcePath: videoFile.path,
@@ -1228,9 +1283,13 @@ export class ImportService extends EventEmitter {
 			.select()
 			.from(episodes)
 			.where(eq(episodes.seriesId, seriesData.id));
-		let matchingEpisodes = matchEpisodesByIdentifier(seriesEpisodes, identifier);
+		let matchingEpisodes = matchEpisodesByIdentifier(seriesEpisodes, resolvedIdentifier);
 		if (matchingEpisodes.length === 0) {
-			matchingEpisodes = this.matchEpisodesFromQueueContext(seriesEpisodes, queueItem, identifier);
+			matchingEpisodes = this.matchEpisodesFromQueueContext(
+				seriesEpisodes,
+				queueItem,
+				resolvedIdentifier
+			);
 		}
 		if (matchingEpisodes.length === 0) {
 			return {
@@ -1835,6 +1894,58 @@ export class ImportService extends EventEmitter {
 		);
 	}
 
+	private resolveSourceReleaseContext(sourcePath: string): {
+		sourceName: string;
+		parsed: ReturnType<ReleaseParser['parse']>;
+	} {
+		const fileSourceName = getMediaParseStem(sourcePath);
+		const parentFolderName = getMediaParseStem(basename(dirname(sourcePath)));
+		const candidates = [fileSourceName, parentFolderName].filter(
+			(candidate, index, all) =>
+				candidate && all.findIndex((value) => value === candidate) === index
+		);
+
+		const [primaryCandidate] = candidates;
+		if (!primaryCandidate) {
+			return {
+				sourceName: basename(sourcePath, extname(sourcePath)),
+				parsed: this.parser.parse(basename(sourcePath, extname(sourcePath)))
+			};
+		}
+
+		const primaryParsed = this.parser.parse(primaryCandidate);
+		if (this.hasKnownQualityMetadata(primaryParsed) || candidates.length === 1) {
+			return {
+				sourceName: primaryCandidate,
+				parsed: primaryParsed
+			};
+		}
+
+		for (let i = 1; i < candidates.length; i++) {
+			const fallbackCandidate = candidates[i];
+			if (!fallbackCandidate) continue;
+			const fallbackParsed = this.parser.parse(fallbackCandidate);
+			if (!this.hasKnownQualityMetadata(fallbackParsed)) {
+				continue;
+			}
+
+			logger.info('[ImportService] Using fallback source context for metadata parsing', {
+				sourcePath,
+				fallbackToken: fallbackCandidate
+			});
+
+			return {
+				sourceName: fallbackCandidate,
+				parsed: fallbackParsed
+			};
+		}
+
+		return {
+			sourceName: primaryCandidate,
+			parsed: primaryParsed
+		};
+	}
+
 	private mapMediaInfoResolution(
 		mediaInfo?: { width?: number; height?: number } | null
 	): string | undefined {
@@ -1903,8 +2014,7 @@ export class ImportService extends EventEmitter {
 		};
 	} {
 		const queueParsed = this.parser.parse(queueItem.title);
-		const sourceName = basename(sourcePath, extname(sourcePath));
-		const sourceParsed = this.parser.parse(sourceName);
+		const { sourceName, parsed: sourceParsed } = this.resolveSourceReleaseContext(sourcePath);
 		const queueQuality = queueItem.quality ?? undefined;
 
 		const hasQueueMetadata =

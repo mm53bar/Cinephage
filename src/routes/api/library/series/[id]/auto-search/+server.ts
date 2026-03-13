@@ -232,7 +232,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 						case 'missing': {
 							const result = await searchOnAdd.searchForMissingEpisodes(seriesId, onProgress, {
-								bypassMonitoring: true
+								bypassMonitoring: true,
+								// Manual Auto Grab should avoid season-pack pulls to prevent duplicate full-season grabs.
+								searchStrategy: 'episode-only'
 							});
 
 							sendEvent('search:completed', {

@@ -124,6 +124,27 @@
 		return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 	}
 
+	// Get the appropriate time to display: completed time for history items, started time for active
+	function getDisplayTime(activity: UnifiedActivity): string | null {
+		// For completed/imported activities, show completion time instead of start time
+		if (
+			activity.completedAt &&
+			(activity.status === 'imported' || activity.status === 'streaming')
+		) {
+			return activity.completedAt;
+		}
+		// For other completed statuses, use completedAt if available
+		if (activity.completedAt && ['removed', 'rejected', 'no_results'].includes(activity.status)) {
+			return activity.completedAt;
+		}
+		// For failed items, use the most recent attempt time if available
+		if (activity.status === 'failed' && activity.lastAttemptAt) {
+			return activity.lastAttemptAt;
+		}
+		// For active items, use startedAt
+		return activity.startedAt;
+	}
+
 	// Status config
 	const statusConfig: Record<
 		string,
@@ -287,8 +308,8 @@
 						{/if}
 					</span>
 					<div class="flex items-center gap-2">
-						<span class="text-xs text-base-content/60" title={activity.startedAt}>
-							{formatRelativeTime(activity.startedAt)}
+						<span class="text-xs text-base-content/60" title={getDisplayTime(activity)}>
+							{formatRelativeTime(getDisplayTime(activity))}
 						</span>
 						{#if selectionMode}
 							<input
@@ -750,8 +771,8 @@
 
 						<!-- Time -->
 						<td>
-							<span class="text-sm" title={activity.startedAt}>
-								{formatRelativeTime(activity.startedAt)}
+							<span class="text-sm" title={getDisplayTime(activity)}>
+								{formatRelativeTime(getDisplayTime(activity))}
 							</span>
 						</td>
 					</tr>

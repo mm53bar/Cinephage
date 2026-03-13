@@ -27,6 +27,7 @@ interface QueueItem {
 	addedAt: string;
 	startedAt?: string | null;
 	completedAt?: string | null;
+	lastAttemptAt?: string | null;
 	errorMessage?: string | null;
 	isUpgrade?: boolean;
 }
@@ -100,6 +101,14 @@ export const GET: RequestHandler = async () => {
 			if (item.completedAt) {
 				timeline.push({ type: 'completed', timestamp: item.completedAt });
 			}
+			// For failed queue items, add a failed event using lastAttemptAt
+			const mappedStatus = mapQueueStatusToActivityStatus(item.status);
+			if (mappedStatus === 'failed' && item.lastAttemptAt) {
+				timeline.push({
+					type: 'failed',
+					timestamp: item.lastAttemptAt
+				});
+			}
 			timeline.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
 			return {
@@ -128,6 +137,7 @@ export const GET: RequestHandler = async () => {
 				timeline,
 				startedAt,
 				completedAt: item.completedAt ?? null,
+				lastAttemptAt: item.lastAttemptAt ?? null,
 				queueItemId: item.id
 			};
 		};

@@ -1105,9 +1105,12 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			updates.completedAt = now;
 		}
 
-		// Capture error message when download fails
-		if (newStatus === 'failed' && download.errorMessage) {
-			updates.errorMessage = download.errorMessage;
+		// Capture error message and timestamp when download fails
+		if (newStatus === 'failed') {
+			if (download.errorMessage) {
+				updates.errorMessage = download.errorMessage;
+			}
+			updates.lastAttemptAt = now;
 		}
 
 		// Only update if something changed
@@ -1742,7 +1745,8 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 			.update(downloadQueue)
 			.set({
 				status: 'failed',
-				errorMessage
+				errorMessage,
+				lastAttemptAt: new Date().toISOString()
 			})
 			.where(eq(downloadQueue.id, id));
 

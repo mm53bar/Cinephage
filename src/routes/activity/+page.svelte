@@ -361,6 +361,7 @@
 			timeline: Array.isArray(activity.timeline) ? activity.timeline : [],
 			startedAt: activity.startedAt ?? new Date().toISOString(),
 			completedAt: activity.completedAt ?? null,
+			lastAttemptAt: activity.lastAttemptAt ?? null,
 			queueItemId: activity.queueItemId,
 			downloadHistoryId: activity.downloadHistoryId,
 			monitoringHistoryId: activity.monitoringHistoryId,
@@ -376,8 +377,25 @@
 
 	function getSortValue(activity: UnifiedActivity, field: string): string | number {
 		switch (field) {
-			case 'time':
+			case 'time': {
+				// For completed items, sort by completion time
+				if (
+					activity.completedAt &&
+					(activity.status === 'imported' ||
+						activity.status === 'streaming' ||
+						activity.status === 'removed' ||
+						activity.status === 'rejected' ||
+						activity.status === 'no_results')
+				) {
+					return activity.completedAt;
+				}
+				// For failed items, use the most recent attempt time if available
+				if (activity.status === 'failed' && activity.lastAttemptAt) {
+					return activity.lastAttemptAt;
+				}
+				// For active items, use startedAt
 				return activity.startedAt;
+			}
 			case 'media':
 				return activity.mediaTitle.toLowerCase();
 			case 'size':
@@ -594,6 +612,39 @@
 		return true;
 	}
 
+	function removeStaleQueueLinkedRows(queueActivity: UnifiedActivity): number {
+		if (!isQueueActivityId(queueActivity.id) || !queueActivity.queueItemId) {
+			return 0;
+		}
+
+		const staleRowIds = new Set(
+			activities
+				.filter(
+					(activity) =>
+						activity.id !== queueActivity.id &&
+						!isQueueActivityId(activity.id) &&
+						activity.queueItemId === queueActivity.queueItemId
+				)
+				.map((activity) => activity.id)
+		);
+
+		if (staleRowIds.size === 0) {
+			return 0;
+		}
+
+		activities = activities.filter((activity) => !staleRowIds.has(activity.id));
+
+		if (
+			selectedActivity &&
+			selectedActivity.queueItemId === queueActivity.queueItemId &&
+			staleRowIds.has(selectedActivity.id)
+		) {
+			selectedActivity = queueActivity;
+		}
+
+		return staleRowIds.size;
+	}
+
 	function upsertActivity(activity: Partial<UnifiedActivity>): void {
 		const normalized = normalizeActivity(activity);
 		if (!normalized) return;
@@ -615,6 +666,7 @@
 		if (existingIndex >= 0) {
 			const existing = activities[existingIndex];
 			Object.assign(existing, normalized);
+			const removedDuplicates = removeStaleQueueLinkedRows(existing);
 			if (
 				selectedActivity &&
 				selectedActivity !== existing &&
@@ -622,12 +674,16 @@
 			) {
 				selectedActivity = existing;
 			}
+			if (removedDuplicates > 0) {
+				total = Math.max(0, total - removedDuplicates);
+			}
 			activities = sortActivitiesList(activities);
 			return;
 		}
 
 		activities = sortActivitiesList([normalized, ...activities]);
-		total += 1;
+		const removedDuplicates = removeStaleQueueLinkedRows(normalized);
+		total = Math.max(0, total + 1 - removedDuplicates);
 	}
 
 	// Detail modal state
@@ -640,7 +696,7 @@
 	$effect(() => {
 		const nextTab = data.tab === 'active' ? 'active' : 'history';
 		activityTab = nextTab;
-		activities = data.activities;
+		activities = sortActivitiesList(data.activities, sortField, sortDirection);
 		total = data.total;
 		reconcileSelectedHistoryIds(data.activities);
 		reconcileSelectedActiveIds(data.activities);
@@ -703,6 +759,34 @@
 			queueStatsRefreshTimer = null;
 		}
 		queueStatsRefreshForcePending = false;
+	});
+
+	// Automatically recompute stats when activities change (e.g., after removing duplicates)
+	$effect(() => {
+		if (activityTab !== 'active') return;
+		if (activities.length === 0) {
+			queueStats = {
+				totalCount: 0,
+				downloadingCount: 0,
+				seedingCount: 0,
+				pausedCount: 0,
+				failedCount: 0,
+				totalDownloadSpeed: 0,
+				totalUploadSpeed: 0
+			};
+			return;
+		}
+
+		const activeActivities = activities.filter((a) => isActiveActivity(a));
+		queueStats = {
+			totalCount: activeActivities.length,
+			downloadingCount: activeActivities.filter((a) => a.status === 'downloading').length,
+			seedingCount: activeActivities.filter((a) => a.status === 'seeding').length,
+			pausedCount: activeActivities.filter((a) => a.status === 'paused').length,
+			failedCount: activeActivities.filter((a) => a.status === 'failed').length,
+			totalDownloadSpeed: 0,
+			totalUploadSpeed: 0
+		};
 	});
 
 	// SSE Connection - internally handles browser/SSR
@@ -956,7 +1040,7 @@
 		const targetLabel = `${targetCount} queue item${targetCount === 1 ? '' : 's'}`;
 		const skippedSuffix =
 			activeConfirmSkippedCount > 0
-				? ` ${activeConfirmSkippedCount} selected row${activeConfirmSkippedCount === 1 ? '' : 's'} do not match this action and will be skipped.`
+				? ` ${activeConfirmSkippedCount} selected queue item${activeConfirmSkippedCount === 1 ? '' : 's'} does not match this action and will be skipped.`
 				: '';
 
 		switch (activeConfirmAction) {

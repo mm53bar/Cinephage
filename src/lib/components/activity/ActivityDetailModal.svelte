@@ -137,14 +137,13 @@
 
 	async function handleRetry() {
 		if (!activity?.queueItemId || !onRetry) return;
+		// Capture stable references before async gap — reactive props can change after await
+		const queueItemId = activity.queueItemId;
+		const isImportFailed = activity.status === 'failed' && isImportFailedActivity(activity);
 		actionLoading = true;
 		try {
-			await onRetry(activity.queueItemId);
-			toasts.success(
-				activity.status === 'failed' && isImportFailedActivity(activity)
-					? 'Import retry initiated'
-					: 'Download retry initiated'
-			);
+			await onRetry(queueItemId);
+			toasts.success(isImportFailed ? 'Import retry initiated' : 'Download retry initiated');
 		} catch (error) {
 			console.error('Failed to retry download:', error);
 			const message = error instanceof Error ? error.message : 'Failed to retry download';
@@ -312,7 +311,16 @@
 							<span class="badge badge-sm badge-warning">Upgrade</span>
 						{/if}
 						<span class="text-sm text-base-content/60">
-							{formatRelativeTime(activity.startedAt)}
+							{formatRelativeTime(
+								activity.status === 'failed' && activity.lastAttemptAt
+									? activity.lastAttemptAt
+									: activity.completedAt &&
+										  ['imported', 'streaming', 'removed', 'rejected', 'no_results'].includes(
+												activity.status
+										  )
+										? activity.completedAt
+										: activity.startedAt
+							)}
 						</span>
 					</div>
 				{/if}

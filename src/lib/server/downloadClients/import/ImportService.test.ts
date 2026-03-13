@@ -212,6 +212,70 @@ describe('ImportService queue-context episode fallback', () => {
 	});
 });
 
+describe('ImportService episode identifier fallback parsing', () => {
+	beforeEach(() => {
+		ImportService.resetInstance();
+	});
+
+	it('resolves episode from queue title when source basename is obfuscated', () => {
+		const service = ImportService.getInstance() as unknown as {
+			resolveEpisodeIdentifierWithFallback: (
+				videoFilePath: string,
+				queueItem: { title: string; seasonNumber?: number | null },
+				seriesType: 'standard' | 'anime' | 'daily'
+			) =>
+				| { numbering: 'standard'; seasonNumber: number; episodeNumbers: number[] }
+				| { numbering: 'daily'; airDate: string }
+				| { numbering: 'absolute'; absoluteEpisode: number }
+				| null;
+		};
+
+		const identifier = service.resolveEpisodeIdentifierWithFallback(
+			'/mnt/nzbdav/completed-downloads/tv/the-night-agent/yAGGjgtaYU29DAJR7VU2EZAyThCqGmPu.mkv.strm',
+			{
+				title: 'The.Night.Agent.S03E10.HDR.2160p.WEB.h265-ETHEL',
+				seasonNumber: 3
+			},
+			'standard'
+		);
+
+		expect(identifier).toEqual({
+			numbering: 'standard',
+			seasonNumber: 3,
+			episodeNumbers: [10]
+		});
+	});
+
+	it('resolves episode from parent folder when source basename is obfuscated', () => {
+		const service = ImportService.getInstance() as unknown as {
+			resolveEpisodeIdentifierWithFallback: (
+				videoFilePath: string,
+				queueItem: { title: string; seasonNumber?: number | null },
+				seriesType: 'standard' | 'anime' | 'daily'
+			) =>
+				| { numbering: 'standard'; seasonNumber: number; episodeNumbers: number[] }
+				| { numbering: 'daily'; airDate: string }
+				| { numbering: 'absolute'; absoluteEpisode: number }
+				| null;
+		};
+
+		const identifier = service.resolveEpisodeIdentifierWithFallback(
+			'/mnt/nzbdav/completed-downloads/tv/The.Night.Agent.S03E10.HDR.2160p.WEB.h265-ETHEL/yAGGjgtaYU29DAJR7VU2EZAyThCqGmPu.mkv.strm',
+			{
+				title: 'Unparseable Release Name',
+				seasonNumber: 3
+			},
+			'standard'
+		);
+
+		expect(identifier).toEqual({
+			numbering: 'standard',
+			seasonNumber: 3,
+			episodeNumbers: [10]
+		});
+	});
+});
+
 describe('ImportService metadata extraction', () => {
 	beforeEach(() => {
 		ImportService.resetInstance();
@@ -252,6 +316,44 @@ describe('ImportService metadata extraction', () => {
 		expect(metadata.quality.resolution).toBe('720p');
 		expect(metadata.quality.source).toBe('bluray');
 		expect(metadata.quality.codec).toBe('h264');
+	});
+
+	it('falls back to parent folder metadata when source filename is obfuscated', () => {
+		const service = ImportService.getInstance() as unknown as {
+			buildImportedMetadata: (
+				queueItem: {
+					title: string;
+					quality?: Record<string, string>;
+					releaseGroup?: string | null;
+				},
+				sourcePath: string,
+				mediaInfo: { width?: number; height?: number; videoCodec?: string } | null
+			) => {
+				sceneName: string;
+				releaseGroup?: string;
+				quality: {
+					resolution?: string;
+					source?: string;
+					codec?: string;
+					hdr?: string;
+				};
+			};
+		};
+
+		const metadata = service.buildImportedMetadata(
+			{
+				title: 'The Night Agent (2026)'
+			},
+			'/tmp/The.Night.Agent.S03E10.HDR.2160p.WEB.h265-ETHEL/yAGGjgtaYU29DAJR7VU2EZAyThCqGmPu.mkv.strm',
+			null
+		);
+
+		expect(metadata.sceneName).toBe('The.Night.Agent.S03E10.HDR.2160p.WEB.h265-ETHEL');
+		expect(metadata.releaseGroup).toBe('ETHEL');
+		expect(metadata.quality.resolution).toBe('2160p');
+		expect(metadata.quality.source).toBe('webrip');
+		expect(metadata.quality.codec).toBe('h265');
+		expect(metadata.quality.hdr).toBe('hdr');
 	});
 
 	it('uses probe metadata as fallback for resolution and codec', () => {

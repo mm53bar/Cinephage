@@ -202,9 +202,7 @@ async function initializeServices(): Promise<void> {
 
 	initializationPromise = (async () => {
 		try {
-			logger.info('Initializing database...');
 			await initializeDatabase();
-			logger.info('Database initialized');
 			const updatedStreamingKeys = await ensureStreamingApiKeyRateLimit();
 			if (updatedStreamingKeys > 0) {
 				logger.info('Updated streaming API key rate limits', {
@@ -391,6 +389,19 @@ const customHandler: Handle = async ({ event, resolve }) => {
 
 	const isStreamingApiRoute = requiresStreamingApiKey(pathname);
 
+	function isHealthRoute(path: string): boolean {
+		if (path === '/health' || path.startsWith('/health/')) {
+			return true;
+		}
+		if (path === '/api/health' || path.startsWith('/api/health/')) {
+			return true;
+		}
+		if (path === '/api/ready' || path.startsWith('/api/ready/')) {
+			return true;
+		}
+		return false;
+	}
+
 	// Fetch session from Better Auth - check API key first, then cookie
 	let session = null;
 	let apiKey = null;
@@ -454,6 +465,8 @@ const customHandler: Handle = async ({ event, resolve }) => {
 	 * - /login - Login page
 	 * - /api/auth/* - Better Auth routes (login/logout/session management)
 	 * - /api/health - Health check endpoint
+	 * - /api/ready - Readiness endpoint
+	 * - /health - Legacy health endpoint (redirects to /api/health)
 	 * All other routes require authentication
 	 * Note: Live TV and Streaming endpoints require API key authentication (see requiresStreamingApiKey)
 	 */
@@ -468,8 +481,8 @@ const customHandler: Handle = async ({ event, resolve }) => {
 			return true;
 		}
 
-		// Health check endpoint
-		if (path === '/api/health' || path.startsWith('/api/health/')) {
+		// Health/readiness endpoints
+		if (isHealthRoute(path)) {
 			return true;
 		}
 
@@ -567,6 +580,10 @@ const customHandler: Handle = async ({ event, resolve }) => {
 	} else {
 		// If setup not complete, force to setup wizard
 		if (!setupComplete) {
+			// Keep health endpoints available for orchestrators during setup
+			if (isHealthRoute(pathname)) {
+				return resolve(event);
+			}
 			if (!pathname.startsWith('/setup')) {
 				throw redirect(302, '/setup');
 			}

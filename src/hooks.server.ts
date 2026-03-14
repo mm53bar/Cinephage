@@ -183,6 +183,7 @@ function clearAuthenticatedLocals(event: Parameters<Handle>[0]['event']): void {
  * Global initialization promise - ensures init runs only once
  */
 let initializationPromise: Promise<void> | null = null;
+let initializationStarted = false;
 
 /**
  * Initialize all background services
@@ -311,16 +312,24 @@ async function initializeServices(): Promise<void> {
 	return initializationPromise;
 }
 
-// Initialize services on module load
-initializeServices().catch((error) => {
-	logger.error('Service initialization failed', error);
-});
+function ensureServicesInitialized(): void {
+	if (building || initializationStarted) {
+		return;
+	}
+
+	initializationStarted = true;
+	initializeServices().catch((error) => {
+		logger.error('Service initialization failed', error);
+	});
+}
 
 /**
  * Handler 1: Better Auth routes
  * Handles all /api/auth/* routes using Better Auth's SvelteKit handler
  */
 const authHandler: Handle = async ({ event, resolve }) => {
+	ensureServicesInitialized();
+
 	if (building) {
 		return resolve(event);
 	}

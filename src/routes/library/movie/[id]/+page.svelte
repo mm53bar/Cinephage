@@ -54,7 +54,9 @@
 	// SSE Connection - internally handles browser/SSR
 	const sse = createDynamicSSE<{
 		'media:initial': { movie: LibraryMovie; queueItem: PageData['queueItem'] };
+		'queue:added': { id: string; title: string; status: string; progress: number | null };
 		'queue:updated': { id: string; title: string; status: string; progress: number | null };
+		'queue:removed': { id: string };
 		'file:added': {
 			file: MovieFile;
 			wasUpgrade: boolean;
@@ -66,6 +68,14 @@
 			movieState = payload.movie;
 			queueItemState = payload.queueItem;
 		},
+		'queue:added': (payload) => {
+			queueItemState = {
+				id: payload.id,
+				title: payload.title,
+				status: payload.status,
+				progress: payload.progress
+			};
+		},
 		'queue:updated': (payload) => {
 			if (!ACTIVE_QUEUE_STATUSES.has(payload.status)) {
 				queueItemState = null;
@@ -76,6 +86,11 @@
 					status: payload.status,
 					progress: payload.progress
 				};
+			}
+		},
+		'queue:removed': (payload) => {
+			if (queueItem?.id === payload.id) {
+				queueItemState = null;
 			}
 		},
 		'file:added': (payload) => {
@@ -91,7 +106,6 @@
 				movie.files = [...movie.files, payload.file];
 			}
 			movie.hasFile = movie.files.length > 0;
-			queueItemState = null;
 		},
 		'file:removed': (payload) => {
 			movie.files = movie.files.filter((f) => f.id !== payload.fileId);

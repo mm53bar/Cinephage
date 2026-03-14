@@ -523,3 +523,19 @@ describe('ImportService episode naming', () => {
 		expect(service.buildEpisodeRelativePath(false, 3, 'Episode 03.mkv')).toBe('Episode 03.mkv');
 	});
 });
+
+describe('ImportService post-import status handling', () => {
+	beforeEach(() => {
+		ImportService.resetInstance();
+	});
+
+	it('treats seeding-imported as already imported', () => {
+		const service = ImportService.getInstance() as unknown as {
+			isAlreadyImportedStatus: (status: string | null | undefined) => boolean;
+		};
+
+		expect(service.isAlreadyImportedStatus('seeding-imported')).toBe(true);
+		expect(service.isAlreadyImportedStatus('imported')).toBe(true);
+		expect(service.isAlreadyImportedStatus('seeding')).toBe(false);
+	});
+});

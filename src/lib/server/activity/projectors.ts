@@ -30,6 +30,7 @@ interface QueueActivityProjectionInput {
 	addedAt?: string | null;
 	startedAt?: string | null;
 	completedAt?: string | null;
+	importedAt?: string | null;
 	errorMessage?: string | null;
 	lastAttemptAt?: string | null;
 	isUpgrade?: boolean | null;
@@ -56,7 +57,14 @@ function mapQueueStatus(status: string): UnifiedActivity['status'] {
 function buildQueueTimeline(
 	download: Pick<
 		QueueActivityProjectionInput,
-		'id' | 'addedAt' | 'startedAt' | 'completedAt' | 'lastAttemptAt' | 'status' | 'errorMessage'
+		| 'id'
+		| 'addedAt'
+		| 'startedAt'
+		| 'completedAt'
+		| 'importedAt'
+		| 'lastAttemptAt'
+		| 'status'
+		| 'errorMessage'
 	>,
 	linkedMonitoring: Pick<
 		MonitoringHistoryRecord,
@@ -90,6 +98,12 @@ function buildQueueTimeline(
 	}
 	if (download.completedAt) {
 		timeline.push({ type: 'completed', timestamp: download.completedAt });
+	}
+	if (
+		(download.status === 'imported' || download.status === 'seeding-imported') &&
+		download.importedAt
+	) {
+		timeline.push({ type: 'imported', timestamp: download.importedAt });
 	}
 	if (download.status === 'failed' && download.lastAttemptAt) {
 		timeline.push({
@@ -140,7 +154,7 @@ export function projectQueueActivity(
 		isUpgrade: download.isUpgrade ?? false,
 		timeline,
 		startedAt,
-		completedAt: download.completedAt ?? null,
+		completedAt: download.importedAt ?? download.completedAt ?? null,
 		lastAttemptAt: download.lastAttemptAt ?? null,
 		queueItemId: download.id
 	};

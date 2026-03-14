@@ -250,6 +250,10 @@ export const GET: RequestHandler = async ({ params }) => {
 			}
 		};
 
+		const onQueueRemoved = (id: string) => {
+			send('queue:removed', { id });
+		};
+
 		// Handle file imports for this movie
 		const onFileImported = (data: unknown) => {
 			const typedData = data as FileImportedEvent;
@@ -304,6 +308,8 @@ export const GET: RequestHandler = async ({ params }) => {
 		// Register handlers
 		downloadMonitor.on('queue:added', onQueueAdded);
 		downloadMonitor.on('queue:updated', onQueueUpdated);
+		downloadMonitor.on('queue:imported', onQueueUpdated);
+		downloadMonitor.on('queue:removed', onQueueRemoved);
 		importService.on('file:imported', onFileImported);
 		importService.on('file:deleted', onFileDeleted);
 		libraryMediaEvents.onMovieUpdated(onMovieUpdated);
@@ -314,6 +320,8 @@ export const GET: RequestHandler = async ({ params }) => {
 		return () => {
 			downloadMonitor.off('queue:added', onQueueAdded);
 			downloadMonitor.off('queue:updated', onQueueUpdated);
+			downloadMonitor.off('queue:imported', onQueueUpdated);
+			downloadMonitor.off('queue:removed', onQueueRemoved);
 			importService.off('file:imported', onFileImported);
 			importService.off('file:deleted', onFileDeleted);
 			libraryMediaEvents.offMovieUpdated(onMovieUpdated);

@@ -653,6 +653,7 @@ export class ActivityService {
 				addedAt: downloadQueue.addedAt,
 				startedAt: downloadQueue.startedAt,
 				completedAt: downloadQueue.completedAt,
+				importedAt: downloadQueue.importedAt,
 				errorMessage: downloadQueue.errorMessage,
 				lastAttemptAt: downloadQueue.lastAttemptAt,
 				isUpgrade: downloadQueue.isUpgrade

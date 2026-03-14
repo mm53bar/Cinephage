@@ -108,6 +108,7 @@
 		};
 		'queue:added': QueueEventPayload;
 		'queue:updated': QueueEventPayload;
+		'queue:removed': { id: string };
 		'file:added': {
 			file: EpisodeFileInfo;
 			episodeIds: string[];
@@ -163,6 +164,9 @@
 					queueItemsState = [...queueItems, newQueueItem];
 				}
 			}
+		},
+		'queue:removed': (payload) => {
+			queueItemsState = queueItems.filter((q) => q.id !== payload.id);
 		},
 		'file:added': (payload) => {
 			console.log('[TVPage] file:added event received:', {

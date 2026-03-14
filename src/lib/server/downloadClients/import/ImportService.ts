@@ -63,6 +63,7 @@ import {
 	resolveTvEpisodeIdentifier,
 	type ResolvedTvEpisodeIdentifier
 } from '$lib/server/library/tv-episode-resolver.js';
+import { isImportedQueueStatus, type QueueStatus } from '$lib/types/queue';
 
 /**
  * Import result for a single file
@@ -160,6 +161,10 @@ export class ImportService extends EventEmitter {
 	private constructor() {
 		super();
 		this.parser = new ReleaseParser();
+	}
+
+	private isAlreadyImportedStatus(status: QueueStatus | string | null | undefined): boolean {
+		return status === 'imported' || status === 'seeding-imported';
 	}
 
 	static getInstance(): ImportService {
@@ -298,8 +303,12 @@ export class ImportService extends EventEmitter {
 		if (queueItem.status === 'importing') {
 			return { status: 'already_importing' };
 		}
-		if (queueItem.status === 'imported') {
+		if (this.isAlreadyImportedStatus(queueItem.status)) {
 			this.pendingImports.delete(queueItemId);
+			logger.debug('Skipping import request for already imported item', {
+				queueItemId,
+				status: queueItem.status
+			});
 			return { status: 'already_imported' };
 		}
 
@@ -401,7 +410,7 @@ export class ImportService extends EventEmitter {
 
 			if (
 				!queueItem ||
-				queueItem.status === 'imported' ||
+				this.isAlreadyImportedStatus(queueItem.status) ||
 				queueItem.status === 'removed' ||
 				queueItem.status === 'failed'
 			) {
@@ -470,7 +479,7 @@ export class ImportService extends EventEmitter {
 		}
 
 		// Check if already imported
-		if (queueItem.status === 'imported') {
+		if (isImportedQueueStatus(queueItem.status)) {
 			return {
 				success: true,
 				queueItemId,

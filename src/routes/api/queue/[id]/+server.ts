@@ -73,7 +73,7 @@ async function writeRemovedHistory(queueItem: typeof downloadQueue.$inferSelect)
 		releaseGroup: queueItem.releaseGroup,
 		grabbedAt: queueItem.addedAt,
 		completedAt: queueItem.completedAt,
-		importedAt: null,
+		importedAt: queueItem.importedAt,
 		createdAt: new Date().toISOString()
 	});
 }

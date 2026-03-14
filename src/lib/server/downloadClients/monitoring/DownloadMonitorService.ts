@@ -19,7 +19,15 @@ import { logger } from '$lib/logging';
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service.js';
 import type { IDownloadClient, DownloadInfo } from '../core/interfaces';
 import type { DownloadClient } from '$lib/types/downloadClient';
-import type { QueueStatus, QueueItem, QueueStats, QueueEvent } from '$lib/types/queue';
+import {
+	isImportedQueueStatus,
+	POST_IMPORT_QUEUE_STATUSES,
+	TERMINAL_QUEUE_STATUSES,
+	type QueueStatus,
+	type QueueItem,
+	type QueueStats,
+	type QueueEvent
+} from '$lib/types/queue';
 
 // Import service is loaded lazily to avoid circular dependencies
 let importServiceInstance: import('../import').ImportService | null = null;
@@ -57,13 +65,13 @@ const TORRENT_MAGNET_METADATA_GRACE_PERIOD_MS = 600_000; // 10 minutes
  * Terminal statuses - items that are completely done and hidden from queue UI.
  * Failed items stay visible for user action and should not be treated as terminal.
  */
-const TERMINAL_STATUSES: QueueStatus[] = ['imported', 'removed'];
+const TERMINAL_STATUSES: QueueStatus[] = [...TERMINAL_QUEUE_STATUSES];
 
 /**
  * Post-import statuses - items that are imported but still visible in queue (seeding)
  * These should NOT be updated by polling - they're managed by removeCompletedDownloads()
  */
-const POST_IMPORT_STATUSES: QueueStatus[] = ['imported', 'seeding-imported'];
+const POST_IMPORT_STATUSES: QueueStatus[] = [...POST_IMPORT_QUEUE_STATUSES];
 
 /**
  * Convert database row to QueueItem
@@ -871,6 +879,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 						protocol: item.protocol
 					});
 					await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
+					this.emit('queue:removed', item.id);
 					this.emitSSE('queue:removed', { id: item.id });
 					continue;
 				}
@@ -887,7 +896,8 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 						seedingTimeLimit: download.seedingTimeLimit
 					});
 
-					await clientInstance.removeDownload(downloadHash, false);
+					const deleteFiles = item.protocol === 'torrent';
+					await clientInstance.removeDownload(downloadHash, deleteFiles);
 
 					// Clean up queue entry
 					await db.delete(downloadQueue).where(eq(downloadQueue.id, item.id));
@@ -895,9 +905,11 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 					logger.info('Successfully removed completed download', {
 						title: item.title,
 						hash: downloadHash,
-						protocol: item.protocol
+						protocol: item.protocol,
+						deleteFiles
 					});
 
+					this.emit('queue:removed', item.id);
 					this.emitSSE('queue:removed', { id: item.id });
 				} else {
 					// Still seeding/processing, leave it alone
@@ -1148,6 +1160,9 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 	): Promise<void> {
 		// If it was importing or already imported, don't change anything
 		if (queueItem.status === 'importing' || queueItem.status === 'imported') {
+			return;
+		}
+		if (isImportedQueueStatus(queueItem.status)) {
 			return;
 		}
 
@@ -1416,7 +1431,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				and(
 					eq(downloadQueue.downloadClientId, params.downloadClientId),
 					eq(downloadQueue.downloadId, params.downloadId),
-					notInArray(downloadQueue.status, ['removed', 'failed', 'imported'])
+					notInArray(downloadQueue.status, ['removed', 'failed', ...POST_IMPORT_STATUSES])
 				)
 			)
 			.limit(1);
@@ -1643,7 +1658,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 		if (current.status === 'importing') {
 			return 'already_importing';
 		}
-		if (current.status === 'imported') {
+		if (isImportedQueueStatus(current.status)) {
 			return 'already_imported';
 		}
 
@@ -1674,7 +1689,7 @@ export class DownloadMonitorService extends EventEmitter implements BackgroundSe
 				and(
 					eq(downloadQueue.id, id),
 					not(eq(downloadQueue.status, 'importing')),
-					not(eq(downloadQueue.status, 'imported'))
+					notInArray(downloadQueue.status, [...POST_IMPORT_STATUSES])
 				)
 			);
 

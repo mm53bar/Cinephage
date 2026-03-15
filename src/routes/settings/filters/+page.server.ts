@@ -25,7 +25,7 @@ export const load: PageServerLoad = async () => {
 		try {
 			currentFilters = { ...currentFilters, ...JSON.parse(settingsData.value) };
 		} catch (e) {
-			logger.error('Failed to parse global_filters', e);
+			logger.error({ err: e }, 'Failed to parse global_filters');
 		}
 	}
 
@@ -55,7 +55,7 @@ export const load: PageServerLoad = async () => {
 					.sort((a, b) => a.name.localeCompare(b.name));
 			}
 		} catch (e) {
-			logger.error('Failed to fetch genres', e);
+			logger.error({ err: e }, 'Failed to fetch genres');
 		}
 	}
 

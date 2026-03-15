@@ -1,6 +1,7 @@
 <script lang="ts" generics="T extends { id: number }">
 	import MediaCard from '$lib/components/tmdb/MediaCard.svelte';
 	import type { TmdbMediaItem } from '$lib/types/tmdb';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import { type Snippet } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { resolvePath } from '$lib/utils/routing';
@@ -60,7 +61,9 @@
 				}
 			}
 		} catch (e) {
-			console.error('Failed to load more items', e);
+			toasts.error('Failed to load more items', {
+				description: e instanceof Error ? e.message : 'Failed to load more items'
+			});
 		} finally {
 			loading = false;
 		}

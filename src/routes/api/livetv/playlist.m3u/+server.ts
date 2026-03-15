@@ -118,10 +118,13 @@ export const GET: RequestHandler = async ({ request, url }) => {
 		// Build M3U playlist (embed API key in channel URLs if provided)
 		const m3u = buildM3UPlaylist(lineup, baseUrl, apiKey);
 
-		logger.debug('[Playlist] Generated M3U playlist', {
-			channels: lineup.length,
-			categoryFilter: categoryId || 'none'
-		});
+		logger.debug(
+			{
+				channels: lineup.length,
+				categoryFilter: categoryId || 'none'
+			},
+			'[Playlist] Generated M3U playlist'
+		);
 
 		return new Response(m3u, {
 			status: 200,

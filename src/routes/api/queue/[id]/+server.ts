@@ -217,7 +217,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 		// Add to blocklist if requested
 		// Note: Blocklist table not yet implemented - would store infoHash to prevent re-downloading
 		if (addToBlocklist && queueItem.infoHash) {
-			logger.warn('Blocklist not yet implemented', { infoHash: queueItem.infoHash });
+			logger.warn({ infoHash: queueItem.infoHash }, 'Blocklist not yet implemented');
 		}
 
 		// Preserve the original failed attempt as a single history record when a user removes it.

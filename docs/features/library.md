@@ -258,13 +258,6 @@ The SQLite database occasionally benefits from optimization:
 sqlite3 data/cinephage.db "VACUUM;"
 ```
 
-### Log Rotation
-
-Library scan logs rotate automatically:
-
-- `LOG_MAX_SIZE_MB`: Max file size before rotation (default: 10)
-- `LOG_MAX_FILES`: Number of log files to keep (default: 5)
-
 ---
 
 **See also:** [Adding Media](../getting-started/adding-media.md) | [Quality Profiles](quality-profiles.md) | [Troubleshooting](../support/troubleshooting.md)

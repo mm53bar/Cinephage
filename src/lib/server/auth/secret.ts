@@ -3,6 +3,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import Database from 'better-sqlite3';
 
+import { logger } from '$lib/logging';
+
 const DATA_DIR = process.env.DATA_DIR || 'data';
 const SECRET_FILE = join(DATA_DIR, '.auth-secret');
 const DEFAULT_BASE_URL = 'http://localhost:5173';
@@ -90,7 +92,10 @@ export function getAuthSecret(): string {
 	mkdirSync(DATA_DIR, { recursive: true });
 	writeFileSync(SECRET_FILE, secret, { mode: 0o600 });
 
-	console.log(`[Auth] Generated new auth secret at: ${SECRET_FILE}`);
+	logger.info(
+		{ component: 'AuthSecret', logDomain: 'auth', secretFile: SECRET_FILE },
+		'[Auth] Generated new auth secret'
+	);
 	return secret;
 }
 

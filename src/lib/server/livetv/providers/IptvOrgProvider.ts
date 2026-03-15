@@ -8,8 +8,10 @@
 import { db } from '$lib/server/db';
 import { livetvAccounts, livetvChannels, livetvCategories, settings } from '$lib/server/db/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { randomUUID } from 'crypto';
+
+const logger = createChildLogger({ logDomain: 'livetv' as const });
 import type {
 	LiveTvProvider,
 	AuthResult,
@@ -182,10 +184,13 @@ export class IptvOrgProvider implements LiveTvProvider {
 			logger.info('[IptvOrgProvider] Fetching categories');
 			const categories = await this.fetchIptvOrgCategories();
 
-			logger.info('[IptvOrgProvider] Matching channels to streams', {
-				channels: channels.length,
-				streams: streams.length
-			});
+			logger.info(
+				{
+					channels: channels.length,
+					streams: streams.length
+				},
+				'[IptvOrgProvider] Matching channels to streams'
+			);
 			const matchedChannels = this.matchChannelsToStreams(channels, streams, config);
 
 			// Get existing categories
@@ -338,15 +343,18 @@ export class IptvOrgProvider implements LiveTvProvider {
 
 			const duration = Date.now() - startTime;
 
-			logger.info('[IptvOrgProvider] Channel sync completed', {
-				accountId,
-				categoriesAdded,
-				categoriesUpdated,
-				channelsAdded,
-				channelsUpdated,
-				channelsRemoved,
-				duration
-			});
+			logger.info(
+				{
+					accountId,
+					categoriesAdded,
+					categoriesUpdated,
+					channelsAdded,
+					channelsUpdated,
+					channelsRemoved,
+					duration
+				},
+				'[IptvOrgProvider] Channel sync completed'
+			);
 
 			return {
 				success: true,
@@ -361,7 +369,7 @@ export class IptvOrgProvider implements LiveTvProvider {
 			const message = error instanceof Error ? error.message : String(error);
 			const duration = Date.now() - startTime;
 
-			logger.error('[IptvOrgProvider] Channel sync failed', { accountId, error: message });
+			logger.error({ accountId, err: error }, '[IptvOrgProvider] Channel sync failed');
 
 			await db
 				.update(livetvAccounts)
@@ -457,8 +465,7 @@ export class IptvOrgProvider implements LiveTvProvider {
 			);
 			return [];
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			logger.error('[IptvOrgProvider] EPG fetch failed', { accountId: account.id, error: message });
+			logger.error({ accountId: account.id, err: error }, '[IptvOrgProvider] EPG fetch failed');
 			return [];
 		}
 	}
@@ -485,17 +492,16 @@ export class IptvOrgProvider implements LiveTvProvider {
 			});
 
 			if (!response.ok) {
-				logger.warn('[IptvOrgProvider] Failed to fetch blocklist', { status: response.status });
+				logger.warn({ status: response.status }, '[IptvOrgProvider] Failed to fetch blocklist');
 				return;
 			}
 
 			const blocklist: IptvOrgBlocklistEntry[] = await response.json();
 			this.blocklist = new Set(blocklist.map((entry) => entry.channel));
 
-			logger.info('[IptvOrgProvider] Blocklist loaded', { count: this.blocklist.size });
+			logger.info({ count: this.blocklist.size }, '[IptvOrgProvider] Blocklist loaded');
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			logger.warn('[IptvOrgProvider] Failed to load blocklist', { error: message });
+			logger.warn({ err: error }, '[IptvOrgProvider] Failed to load blocklist');
 		}
 	}
 
@@ -512,7 +518,7 @@ export class IptvOrgProvider implements LiveTvProvider {
 				return filters.include_adult ?? false;
 			}
 		} catch (e) {
-			logger.warn('[IptvOrgProvider] Failed to read global adult filter', { error: e });
+			logger.warn({ err: e }, '[IptvOrgProvider] Failed to read global adult filter');
 		}
 		return false;
 	}
@@ -601,7 +607,7 @@ export class IptvOrgProvider implements LiveTvProvider {
 		});
 
 		if (!response.ok) {
-			logger.warn('[IptvOrgProvider] Failed to fetch categories', { status: response.status });
+			logger.warn({ status: response.status }, '[IptvOrgProvider] Failed to fetch categories');
 			return [];
 		}
 

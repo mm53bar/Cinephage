@@ -154,11 +154,14 @@ export const GET: RequestHandler = async ({ url }) => {
 				criteria.searchTitles = searchTitles;
 			}
 		} catch (error) {
-			logger.warn('[SearchAPI] Failed to look up alternate titles', {
-				tmdbId,
-				searchType,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					tmdbId,
+					searchType,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[SearchAPI] Failed to look up alternate titles'
+			);
 		}
 	}
 
@@ -182,10 +185,13 @@ export const GET: RequestHandler = async ({ url }) => {
 		}
 
 		// Debug logging for profile issues
-		logger.info('[SearchAPI] Enrichment requested', {
-			scoringProfileId: effectiveScoringProfileId ?? 'none',
-			protocolFilter
-		});
+		logger.info(
+			{
+				scoringProfileId: effectiveScoringProfileId ?? 'none',
+				protocolFilter
+			},
+			'[SearchAPI] Enrichment requested'
+		);
 
 		const enrichmentOpts: EnrichmentOptions = {
 			scoringProfileId: effectiveScoringProfileId,

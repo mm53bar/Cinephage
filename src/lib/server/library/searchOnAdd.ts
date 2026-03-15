@@ -155,7 +155,7 @@ class SearchOnAddService {
 			onProgress
 		} = params;
 
-		logger.info('[SearchOnAdd] Starting movie search', { movieId, tmdbId, title, year });
+		logger.info({ movieId, tmdbId, title, year }, '[SearchOnAdd] Starting movie search');
 
 		// Report initial progress
 		onProgress?.('initializing', `Starting search for "${title}"...`, { current: 0, total: 100 });
@@ -169,7 +169,7 @@ class SearchOnAddService {
 			});
 
 			const hasExistingFile = !!existingFile;
-			logger.debug('[SearchOnAdd] Movie file status', { movieId, hasExistingFile });
+			logger.debug({ movieId, hasExistingFile }, '[SearchOnAdd] Movie file status');
 
 			const indexerManager = await getIndexerManager();
 			const searchSource: 'interactive' | 'automatic' = bypassMonitoring
@@ -188,11 +188,14 @@ class SearchOnAddService {
 
 			if (!indexerAvailability.ok) {
 				const errorMessage = indexerAvailability.message || 'No indexers are available';
-				logger.info('[SearchOnAdd] Movie search blocked by indexer availability', {
-					movieId,
-					code: indexerAvailability.code,
-					message: errorMessage
-				});
+				logger.info(
+					{
+						movieId,
+						code: indexerAvailability.code,
+						message: errorMessage
+					},
+					'[SearchOnAdd] Movie search blocked by indexer availability'
+				);
 				onProgress?.('error', errorMessage, { current: 100, total: 100 });
 				return { success: false, error: errorMessage };
 			}
@@ -218,11 +221,14 @@ class SearchOnAddService {
 				}
 			});
 
-			logger.info('[SearchOnAdd] Movie search completed', {
-				movieId,
-				totalResults: searchResult.releases.length,
-				rejectedCount: searchResult.rejectedCount
-			});
+			logger.info(
+				{
+					movieId,
+					totalResults: searchResult.releases.length,
+					rejectedCount: searchResult.rejectedCount
+				},
+				'[SearchOnAdd] Movie search completed'
+			);
 
 			// Log the top releases for debugging
 			if (searchResult.releases.length > 0) {
@@ -234,11 +240,11 @@ class SearchOnAddService {
 					codec: r.parsed.codec,
 					size: r.size ? Math.round((r.size / 1024 / 1024 / 1024) * 10) / 10 + 'GB' : 'unknown'
 				}));
-				logger.info('[SearchOnAdd] Top 5 releases by score', { movieId, topReleases });
+				logger.info({ movieId, topReleases }, '[SearchOnAdd] Top 5 releases by score');
 			}
 
 			if (searchResult.releases.length === 0) {
-				logger.info('[SearchOnAdd] No suitable releases found for movie', { movieId, title });
+				logger.info({ movieId, title }, '[SearchOnAdd] No suitable releases found for movie');
 				onProgress?.('complete', 'No suitable releases found', { current: 100, total: 100 });
 				return { success: false, error: 'No suitable releases found' };
 			}
@@ -252,7 +258,7 @@ class SearchOnAddService {
 
 			// If movie has existing file, filter to only upgrades
 			if (hasExistingFile) {
-				logger.info('[SearchOnAdd] Movie has existing file, checking for upgrades', { movieId });
+				logger.info({ movieId }, '[SearchOnAdd] Movie has existing file, checking for upgrades');
 				onProgress?.('evaluating', 'Checking for upgrade releases...', { current: 60, total: 100 });
 
 				// Find the first release that qualifies as an upgrade
@@ -281,11 +287,14 @@ class SearchOnAddService {
 					const decision = await releaseDecisionService.evaluateForMovie(movieId, releaseInfo);
 
 					if (decision.accepted && decision.isUpgrade) {
-						logger.info('[SearchOnAdd] Found upgrade release for movie', {
-							movieId,
-							release: release.title,
-							scoreImprovement: decision.scoreImprovement
-						});
+						logger.info(
+							{
+								movieId,
+								release: release.title,
+								scoreImprovement: decision.scoreImprovement
+							},
+							'[SearchOnAdd] Found upgrade release for movie'
+						);
 
 						onProgress?.('grabbing', `Grabbing upgrade: ${release.title.substring(0, 50)}...`, {
 							current: 85,
@@ -320,7 +329,7 @@ class SearchOnAddService {
 					}
 				}
 
-				logger.info('[SearchOnAdd] No upgrades found for movie with existing file', { movieId });
+				logger.info({ movieId }, '[SearchOnAdd] No upgrades found for movie with existing file');
 				onProgress?.('complete', 'No upgrades found - existing file quality is sufficient', {
 					current: 100,
 					total: 100
@@ -362,7 +371,7 @@ class SearchOnAddService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[SearchOnAdd] Movie search failed', { movieId, error: message });
+			logger.error({ movieId, err: error }, '[SearchOnAdd] Movie search failed');
 			onProgress?.('error', `Search failed: ${message}`, { current: 100, total: 100 });
 			return { success: false, error: message };
 		}
@@ -379,17 +388,20 @@ class SearchOnAddService {
 	async searchForSeries(params: SearchForSeriesParams): Promise<GrabResult> {
 		const { seriesId, tmdbId, tvdbId, imdbId, title, year, scoringProfileId, monitorType } = params;
 
-		logger.info('[SearchOnAdd] Starting series search', {
-			seriesId,
-			tmdbId,
-			title,
-			year,
-			monitorType
-		});
+		logger.info(
+			{
+				seriesId,
+				tmdbId,
+				title,
+				year,
+				monitorType
+			},
+			'[SearchOnAdd] Starting series search'
+		);
 
 		// For 'none' monitor type, skip searching
 		if (monitorType === 'none') {
-			logger.info('[SearchOnAdd] Monitor type is none, skipping search', { seriesId });
+			logger.info({ seriesId }, '[SearchOnAdd] Monitor type is none, skipping search');
 			return { success: true };
 		}
 
@@ -408,11 +420,14 @@ class SearchOnAddService {
 
 			if (!indexerAvailability.ok) {
 				const errorMessage = indexerAvailability.message || 'No indexers are available';
-				logger.info('[SearchOnAdd] Series search blocked by indexer availability', {
-					seriesId,
-					code: indexerAvailability.code,
-					message: errorMessage
-				});
+				logger.info(
+					{
+						seriesId,
+						code: indexerAvailability.code,
+						message: errorMessage
+					},
+					'[SearchOnAdd] Series search blocked by indexer availability'
+				);
 				return { success: false, error: errorMessage };
 			}
 
@@ -436,14 +451,17 @@ class SearchOnAddService {
 				}
 			});
 
-			logger.info('[SearchOnAdd] Series search completed', {
-				seriesId,
-				totalResults: searchResult.releases.length,
-				rejectedCount: searchResult.rejectedCount
-			});
+			logger.info(
+				{
+					seriesId,
+					totalResults: searchResult.releases.length,
+					rejectedCount: searchResult.rejectedCount
+				},
+				'[SearchOnAdd] Series search completed'
+			);
 
 			if (searchResult.releases.length === 0) {
-				logger.info('[SearchOnAdd] No suitable releases found for series', { seriesId, title });
+				logger.info({ seriesId, title }, '[SearchOnAdd] No suitable releases found for series');
 				return { success: false, error: 'No suitable releases found' };
 			}
 
@@ -461,10 +479,13 @@ class SearchOnAddService {
 				monitorType === 'recent'
 			) {
 				// These types don't auto-grab on add - they're handled by ongoing monitoring
-				logger.info('[SearchOnAdd] Monitor type defers to scheduler, not auto-grabbing', {
-					seriesId,
-					monitorType
-				});
+				logger.info(
+					{
+						seriesId,
+						monitorType
+					},
+					'[SearchOnAdd] Monitor type defers to scheduler, not auto-grabbing'
+				);
 				return { success: true };
 			}
 
@@ -490,12 +511,15 @@ class SearchOnAddService {
 				const decision = await releaseDecisionService.evaluateForSeries(seriesId, releaseInfo);
 
 				if (decision.accepted) {
-					logger.info('[SearchOnAdd] Found acceptable release for series', {
-						seriesId,
-						release: release.title,
-						isUpgrade: decision.isUpgrade,
-						upgradeStats: decision.upgradeStats
-					});
+					logger.info(
+						{
+							seriesId,
+							release: release.title,
+							isUpgrade: decision.isUpgrade,
+							upgradeStats: decision.upgradeStats
+						},
+						'[SearchOnAdd] Found acceptable release for series'
+					);
 
 					const grabResult = await grabService.grabRelease(release, {
 						mediaType: 'tv',
@@ -513,14 +537,17 @@ class SearchOnAddService {
 				}
 			}
 
-			logger.info('[SearchOnAdd] No acceptable releases found for series', {
-				seriesId,
-				reason: 'No releases pass evaluation'
-			});
+			logger.info(
+				{
+					seriesId,
+					reason: 'No releases pass evaluation'
+				},
+				'[SearchOnAdd] No acceptable releases found for series'
+			);
 			return { success: false, error: 'No releases found that meet upgrade requirements' };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[SearchOnAdd] Series search failed', { seriesId, error: message });
+			logger.error({ seriesId, err: error }, '[SearchOnAdd] Series search failed');
 			return { success: false, error: message };
 		}
 	}
@@ -534,7 +561,7 @@ class SearchOnAddService {
 	async searchForEpisode(params: SearchForEpisodeParams): Promise<GrabResult> {
 		const { episodeId, bypassMonitoring = false } = params;
 
-		logger.info('[SearchOnAdd] Starting episode search', { episodeId });
+		logger.info({ episodeId }, '[SearchOnAdd] Starting episode search');
 
 		try {
 			// Look up episode and series data
@@ -555,10 +582,13 @@ class SearchOnAddService {
 			}
 
 			if (!bypassMonitoring && !seriesData.monitored) {
-				logger.info('[SearchOnAdd] Skipping episode search for unmonitored series', {
-					episodeId,
-					seriesId: seriesData.id
-				});
+				logger.info(
+					{
+						episodeId,
+						seriesId: seriesData.id
+					},
+					'[SearchOnAdd] Skipping episode search for unmonitored series'
+				);
 				return { success: true };
 			}
 
@@ -570,7 +600,7 @@ class SearchOnAddService {
 			const existingFile = allEpisodeFiles.find((f) => f.episodeIds?.includes(episodeId));
 
 			const hasExistingFile = !!existingFile;
-			logger.debug('[SearchOnAdd] Episode file status', { episodeId, hasExistingFile });
+			logger.debug({ episodeId, hasExistingFile }, '[SearchOnAdd] Episode file status');
 
 			const indexerManager = await getIndexerManager();
 			const searchSource: 'interactive' | 'automatic' = bypassMonitoring
@@ -589,11 +619,14 @@ class SearchOnAddService {
 
 			if (!indexerAvailability.ok) {
 				const errorMessage = indexerAvailability.message || 'No indexers are available';
-				logger.info('[SearchOnAdd] Episode search blocked by indexer availability', {
-					episodeId,
-					code: indexerAvailability.code,
-					message: errorMessage
-				});
+				logger.info(
+					{
+						episodeId,
+						code: indexerAvailability.code,
+						message: errorMessage
+					},
+					'[SearchOnAdd] Episode search blocked by indexer availability'
+				);
 				return { success: false, error: errorMessage };
 			}
 
@@ -618,19 +651,25 @@ class SearchOnAddService {
 				}
 			});
 
-			logger.info('[SearchOnAdd] Episode search completed', {
-				episodeId,
-				seasonNumber: episode.seasonNumber,
-				episodeNumber: episode.episodeNumber,
-				totalResults: searchResult.releases.length,
-				rejectedCount: searchResult.rejectedCount
-			});
+			logger.info(
+				{
+					episodeId,
+					seasonNumber: episode.seasonNumber,
+					episodeNumber: episode.episodeNumber,
+					totalResults: searchResult.releases.length,
+					rejectedCount: searchResult.rejectedCount
+				},
+				'[SearchOnAdd] Episode search completed'
+			);
 
 			if (searchResult.releases.length === 0) {
-				logger.info('[SearchOnAdd] No suitable releases found for episode', {
-					episodeId,
-					title: `${seriesData.title} S${episode.seasonNumber.toString().padStart(2, '0')}E${episode.episodeNumber.toString().padStart(2, '0')}`
-				});
+				logger.info(
+					{
+						episodeId,
+						title: `${seriesData.title} S${episode.seasonNumber.toString().padStart(2, '0')}E${episode.episodeNumber.toString().padStart(2, '0')}`
+					},
+					'[SearchOnAdd] No suitable releases found for episode'
+				);
 				return { success: false, error: 'No suitable releases found' };
 			}
 
@@ -638,9 +677,12 @@ class SearchOnAddService {
 
 			// If episode has existing file, filter to only upgrades
 			if (hasExistingFile) {
-				logger.info('[SearchOnAdd] Episode has existing file, checking for upgrades', {
-					episodeId
-				});
+				logger.info(
+					{
+						episodeId
+					},
+					'[SearchOnAdd] Episode has existing file, checking for upgrades'
+				);
 
 				// Find the first release that qualifies as an upgrade
 				for (const release of searchResult.releases) {
@@ -662,11 +704,14 @@ class SearchOnAddService {
 					const decision = await releaseDecisionService.evaluateForEpisode(episodeId, releaseInfo);
 
 					if (decision.accepted && decision.isUpgrade) {
-						logger.info('[SearchOnAdd] Found upgrade release for episode', {
-							episodeId,
-							release: release.title,
-							scoreImprovement: decision.scoreImprovement
-						});
+						logger.info(
+							{
+								episodeId,
+								release: release.title,
+								scoreImprovement: decision.scoreImprovement
+							},
+							'[SearchOnAdd] Found upgrade release for episode'
+						);
 
 						const grabResult = await grabService.grabRelease(release, {
 							mediaType: 'tv',
@@ -686,9 +731,12 @@ class SearchOnAddService {
 					}
 				}
 
-				logger.info('[SearchOnAdd] No upgrades found for episode with existing file', {
-					episodeId
-				});
+				logger.info(
+					{
+						episodeId
+					},
+					'[SearchOnAdd] No upgrades found for episode with existing file'
+				);
 				return { success: false, error: 'No upgrades found - existing file quality is sufficient' };
 			}
 
@@ -711,7 +759,7 @@ class SearchOnAddService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[SearchOnAdd] Episode search failed', { episodeId, error: message });
+			logger.error({ episodeId, err: error }, '[SearchOnAdd] Episode search failed');
 			return { success: false, error: message };
 		}
 	}
@@ -725,7 +773,7 @@ class SearchOnAddService {
 	async searchForSeason(params: SearchForSeasonParams): Promise<GrabResult> {
 		const { seriesId, seasonNumber, bypassMonitoring = false } = params;
 
-		logger.info('[SearchOnAdd] Starting season search', { seriesId, seasonNumber });
+		logger.info({ seriesId, seasonNumber }, '[SearchOnAdd] Starting season search');
 
 		try {
 			// Look up series data
@@ -738,10 +786,13 @@ class SearchOnAddService {
 			}
 
 			if (!bypassMonitoring && !seriesData.monitored) {
-				logger.info('[SearchOnAdd] Skipping season search for unmonitored series', {
-					seriesId,
-					seasonNumber
-				});
+				logger.info(
+					{
+						seriesId,
+						seasonNumber
+					},
+					'[SearchOnAdd] Skipping season search for unmonitored series'
+				);
 				return { success: true };
 			}
 
@@ -767,12 +818,15 @@ class SearchOnAddService {
 
 			if (!indexerAvailability.ok) {
 				const errorMessage = indexerAvailability.message || 'No indexers are available';
-				logger.info('[SearchOnAdd] Season search blocked by indexer availability', {
-					seriesId,
-					seasonNumber,
-					code: indexerAvailability.code,
-					message: errorMessage
-				});
+				logger.info(
+					{
+						seriesId,
+						seasonNumber,
+						code: indexerAvailability.code,
+						message: errorMessage
+					},
+					'[SearchOnAdd] Season search blocked by indexer availability'
+				);
 				return { success: false, error: errorMessage };
 			}
 
@@ -796,19 +850,25 @@ class SearchOnAddService {
 				}
 			});
 
-			logger.info('[SearchOnAdd] Season search completed', {
-				seriesId,
-				seasonNumber,
-				totalResults: searchResult.releases.length,
-				rejectedCount: searchResult.rejectedCount
-			});
-
-			if (searchResult.releases.length === 0) {
-				logger.info('[SearchOnAdd] No suitable releases found for season', {
+			logger.info(
+				{
 					seriesId,
 					seasonNumber,
-					title: `${seriesData.title} Season ${seasonNumber}`
-				});
+					totalResults: searchResult.releases.length,
+					rejectedCount: searchResult.rejectedCount
+				},
+				'[SearchOnAdd] Season search completed'
+			);
+
+			if (searchResult.releases.length === 0) {
+				logger.info(
+					{
+						seriesId,
+						seasonNumber,
+						title: `${seriesData.title} Season ${seasonNumber}`
+					},
+					'[SearchOnAdd] No suitable releases found for season'
+				);
 				return { success: false, error: 'No suitable releases found' };
 			}
 
@@ -839,13 +899,16 @@ class SearchOnAddService {
 				);
 
 				if (decision.accepted) {
-					logger.info('[SearchOnAdd] Found acceptable release for season pack', {
-						seriesId,
-						seasonNumber,
-						release: release.title,
-						isUpgrade: decision.isUpgrade,
-						upgradeStats: decision.upgradeStats
-					});
+					logger.info(
+						{
+							seriesId,
+							seasonNumber,
+							release: release.title,
+							isUpgrade: decision.isUpgrade,
+							upgradeStats: decision.upgradeStats
+						},
+						'[SearchOnAdd] Found acceptable release for season pack'
+					);
 
 					const grabResult = await grabService.grabRelease(release, {
 						mediaType: 'tv',
@@ -865,19 +928,25 @@ class SearchOnAddService {
 				}
 			}
 
-			logger.info('[SearchOnAdd] No acceptable releases found for season', {
-				seriesId,
-				seasonNumber,
-				reason: 'No releases pass majority benefit rule'
-			});
+			logger.info(
+				{
+					seriesId,
+					seasonNumber,
+					reason: 'No releases pass majority benefit rule'
+				},
+				'[SearchOnAdd] No acceptable releases found for season'
+			);
 			return { success: false, error: 'No releases found that would benefit majority of episodes' };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[SearchOnAdd] Season search failed', {
-				seriesId,
-				seasonNumber,
-				error: message
-			});
+			logger.error(
+				{
+					seriesId,
+					seasonNumber,
+					err: error
+				},
+				'[SearchOnAdd] Season search failed'
+			);
 			return { success: false, error: message };
 		}
 	}
@@ -897,11 +966,14 @@ class SearchOnAddService {
 	): Promise<MultiSearchResult> {
 		const { bypassMonitoring = false, searchStrategy = 'pack-first' } = options;
 
-		logger.info('[SearchOnAdd] Starting missing episodes search with multi-season strategy', {
-			seriesId,
-			bypassMonitoring,
-			searchStrategy
-		});
+		logger.info(
+			{
+				seriesId,
+				bypassMonitoring,
+				searchStrategy
+			},
+			'[SearchOnAdd] Starting missing episodes search with multi-season strategy'
+		);
 
 		try {
 			// Get series data first
@@ -931,11 +1003,14 @@ class SearchOnAddService {
 
 			if (!indexerAvailability.ok) {
 				const errorMessage = indexerAvailability.message || 'No indexers are available';
-				logger.info('[SearchOnAdd] Missing episodes search blocked by indexer availability', {
-					seriesId,
-					code: indexerAvailability.code,
-					message: errorMessage
-				});
+				logger.info(
+					{
+						seriesId,
+						code: indexerAvailability.code,
+						message: errorMessage
+					},
+					'[SearchOnAdd] Missing episodes search blocked by indexer availability'
+				);
 				return {
 					results: [],
 					summary: { searched: 0, found: 0, grabbed: 0 },
@@ -961,11 +1036,14 @@ class SearchOnAddService {
 				return ep.airDate <= now;
 			});
 
-			logger.info('[SearchOnAdd] Found missing episodes', {
-				seriesId,
-				total: missingEpisodes.length,
-				aired: airedMissingEpisodes.length
-			});
+			logger.info(
+				{
+					seriesId,
+					total: missingEpisodes.length,
+					aired: airedMissingEpisodes.length
+				},
+				'[SearchOnAdd] Found missing episodes'
+			);
 
 			if (airedMissingEpisodes.length === 0) {
 				return {
@@ -1051,12 +1129,15 @@ class SearchOnAddService {
 					percentComplete: 100
 				});
 
-				logger.info('[SearchOnAdd] Missing episodes targeted search completed', {
-					seriesId,
-					searched: sortedEpisodes.length,
-					found: foundCount,
-					grabbed: grabbedCount
-				});
+				logger.info(
+					{
+						seriesId,
+						searched: sortedEpisodes.length,
+						found: foundCount,
+						grabbed: grabbedCount
+					},
+					'[SearchOnAdd] Missing episodes targeted search completed'
+				);
 
 				return {
 					results,
@@ -1115,16 +1196,19 @@ class SearchOnAddService {
 				}))
 			];
 
-			logger.info('[SearchOnAdd] Missing episodes search completed', {
-				seriesId,
-				searched: searchResult.summary.searched,
-				found: searchResult.summary.found,
-				grabbed: searchResult.summary.grabbed,
-				completeSeriesPacks: searchResult.summary.completeSeriesPacksGrabbed,
-				multiSeasonPacks: searchResult.summary.multiSeasonPacksGrabbed,
-				singleSeasonPacks: searchResult.summary.singleSeasonPacksGrabbed,
-				individualEpisodes: searchResult.summary.individualEpisodesGrabbed
-			});
+			logger.info(
+				{
+					seriesId,
+					searched: searchResult.summary.searched,
+					found: searchResult.summary.found,
+					grabbed: searchResult.summary.grabbed,
+					completeSeriesPacks: searchResult.summary.completeSeriesPacksGrabbed,
+					multiSeasonPacks: searchResult.summary.multiSeasonPacksGrabbed,
+					singleSeasonPacks: searchResult.summary.singleSeasonPacksGrabbed,
+					individualEpisodes: searchResult.summary.individualEpisodesGrabbed
+				},
+				'[SearchOnAdd] Missing episodes search completed'
+			);
 
 			return {
 				results,
@@ -1142,7 +1226,7 @@ class SearchOnAddService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[SearchOnAdd] Missing episodes search failed', { seriesId, error: message });
+			logger.error({ seriesId, err: error }, '[SearchOnAdd] Missing episodes search failed');
 			return {
 				results: [],
 				summary: { searched: 0, found: 0, grabbed: 0 },
@@ -1161,9 +1245,12 @@ class SearchOnAddService {
 			update: import('$lib/server/downloads/MultiSeasonSearchStrategy.js').SearchProgressUpdate
 		) => void
 	): Promise<MultiSearchResult> {
-		logger.info('[SearchOnAdd] Starting bulk episode search with multi-season strategy', {
-			count: episodeIds.length
-		});
+		logger.info(
+			{
+				count: episodeIds.length
+			},
+			'[SearchOnAdd] Starting bulk episode search with multi-season strategy'
+		);
 
 		if (episodeIds.length === 0) {
 			return {
@@ -1187,11 +1274,14 @@ class SearchOnAddService {
 
 			if (!indexerAvailability.ok) {
 				const errorMessage = indexerAvailability.message || 'No indexers are available';
-				logger.info('[SearchOnAdd] Bulk episode search blocked by indexer availability', {
-					count: episodeIds.length,
-					code: indexerAvailability.code,
-					message: errorMessage
-				});
+				logger.info(
+					{
+						count: episodeIds.length,
+						code: indexerAvailability.code,
+						message: errorMessage
+					},
+					'[SearchOnAdd] Bulk episode search blocked by indexer availability'
+				);
 				return {
 					results: [],
 					summary: { searched: 0, found: 0, grabbed: 0 },
@@ -1320,15 +1410,18 @@ class SearchOnAddService {
 				totalIndividualGrabbed += searchResult.summary.individualEpisodesGrabbed;
 			}
 
-			logger.info('[SearchOnAdd] Bulk episode search completed', {
-				searched: totalSearched,
-				found: totalFound,
-				grabbed: totalGrabbed,
-				completeSeriesPacks: totalCompleteSeriesPacks,
-				multiSeasonPacks: totalMultiSeasonPacks,
-				singleSeasonPacks: totalSingleSeasonPacks,
-				individualEpisodesGrabbed: totalIndividualGrabbed
-			});
+			logger.info(
+				{
+					searched: totalSearched,
+					found: totalFound,
+					grabbed: totalGrabbed,
+					completeSeriesPacks: totalCompleteSeriesPacks,
+					multiSeasonPacks: totalMultiSeasonPacks,
+					singleSeasonPacks: totalSingleSeasonPacks,
+					individualEpisodesGrabbed: totalIndividualGrabbed
+				},
+				'[SearchOnAdd] Bulk episode search completed'
+			);
 
 			return {
 				results: allResults,
@@ -1344,7 +1437,7 @@ class SearchOnAddService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[SearchOnAdd] Bulk episode search failed', { error: message });
+			logger.error({ err: error }, '[SearchOnAdd] Bulk episode search failed');
 			return {
 				results: [],
 				summary: { searched: 0, found: 0, grabbed: 0 },

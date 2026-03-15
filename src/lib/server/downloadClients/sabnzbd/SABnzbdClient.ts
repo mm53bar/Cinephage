@@ -3,7 +3,9 @@
  * Handles adding NZBs, monitoring downloads, and managing the download queue.
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 import type {
 	IDownloadClient,
 	DownloadClientConfig,
@@ -199,11 +201,14 @@ export class SABnzbdClient implements IDownloadClient {
 		// Fallback: construct from base + category dir + name
 		// Validate item.name before constructing path
 		if (!item.name || item.name.trim().length === 0) {
-			logger.warn('[SABnzbd] Cannot construct path: item name is empty', {
-				nzo_id: item.nzo_id,
-				storage: item.storage,
-				baseDir
-			});
+			logger.warn(
+				{
+					nzo_id: item.nzo_id,
+					storage: item.storage,
+					baseDir
+				},
+				'[SABnzbd] Cannot construct path: item name is empty'
+			);
 			return baseDir;
 		}
 
@@ -232,12 +237,15 @@ export class SABnzbdClient implements IDownloadClient {
 		}
 
 		const constructedPath = `${outputDir.replace(/\/+$/, '')}/${item.name}`;
-		logger.debug('[SABnzbd] Constructed output path from name', {
-			nzo_id: item.nzo_id,
-			originalStorage: item.storage,
-			constructedPath,
-			category: item.category
-		});
+		logger.debug(
+			{
+				nzo_id: item.nzo_id,
+				originalStorage: item.storage,
+				constructedPath,
+				category: item.category
+			},
+			'[SABnzbd] Constructed output path from name'
+		);
 
 		return constructedPath;
 	}
@@ -262,11 +270,14 @@ export class SABnzbdClient implements IDownloadClient {
 	 */
 	async test(): Promise<ConnectionTestResult> {
 		try {
-			logger.debug('[SABnzbd] Testing connection', {
-				host: this.config.host,
-				port: this.config.port,
-				urlBase: this.config.urlBase ?? ''
-			});
+			logger.debug(
+				{
+					host: this.config.host,
+					port: this.config.port,
+					urlBase: this.config.urlBase ?? ''
+				},
+				'[SABnzbd] Testing connection'
+			);
 
 			// Get version to test connectivity
 			const version = await this.proxy.getVersion();
@@ -282,12 +293,15 @@ export class SABnzbdClient implements IDownloadClient {
 			const sabWarnings = await this.proxy.getWarnings();
 			const warnings = sabWarnings.map((w) => `[${w.type}] ${w.text}`);
 
-			logger.info('[SABnzbd] Connection test successful', {
-				version,
-				diskSpace1: fullStatus.diskspace1,
-				diskSpace2: fullStatus.diskspace2,
-				warningCount: warnings.length
-			});
+			logger.info(
+				{
+					version,
+					diskSpace1: fullStatus.diskspace1,
+					diskSpace2: fullStatus.diskspace2,
+					warningCount: warnings.length
+				},
+				'[SABnzbd] Connection test successful'
+			);
 
 			return {
 				success: true,
@@ -308,7 +322,7 @@ export class SABnzbdClient implements IDownloadClient {
 					? error.message
 					: `Failed to connect: ${error instanceof Error ? error.message : 'Unknown error'}`;
 
-			logger.error('[SABnzbd] Connection test failed', { error: message });
+			logger.error({ err: error }, '[SABnzbd] Connection test failed');
 
 			return {
 				success: false,
@@ -372,10 +386,13 @@ export class SABnzbdClient implements IDownloadClient {
 			return null;
 		} catch (error) {
 			// Don't block on duplicate check failure - log and continue
-			logger.warn('[SABnzbd] Failed to check for duplicates', {
-				title,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					title,
+					err: error
+				},
+				'[SABnzbd] Failed to check for duplicates'
+			);
 			return null;
 		}
 	}
@@ -387,25 +404,31 @@ export class SABnzbdClient implements IDownloadClient {
 	async addDownload(options: AddDownloadOptions): Promise<string> {
 		const priority = mapPriorityToSabnzbd(options.priority);
 
-		logger.info('[SABnzbd] Adding download', {
-			title: options.title,
-			category: options.category,
-			priority,
-			hasNzbFile: !!(options.nzbFile || options.torrentFile),
-			hasUrl: !!options.downloadUrl,
-			optionsKeys: Object.keys(options)
-		});
+		logger.info(
+			{
+				title: options.title,
+				category: options.category,
+				priority,
+				hasNzbFile: !!(options.nzbFile || options.torrentFile),
+				hasUrl: !!options.downloadUrl,
+				optionsKeys: Object.keys(options)
+			},
+			'[SABnzbd] Adding download'
+		);
 
 		try {
 			// Check for duplicates before adding (SABnzbd generates new IDs, so we check by title)
 			if (options.title) {
 				const existingDownload = await this.findDuplicateByTitle(options.title, options.category);
 				if (existingDownload) {
-					logger.warn('[SABnzbd] Duplicate download detected', {
-						title: options.title,
-						existingId: existingDownload.id,
-						existingStatus: existingDownload.status
-					});
+					logger.warn(
+						{
+							title: options.title,
+							existingId: existingDownload.id,
+							existingStatus: existingDownload.status
+						},
+						'[SABnzbd] Duplicate download detected'
+					);
 					const error = new Error(
 						`Duplicate download: "${options.title}" already exists in SABnzbd`
 					);
@@ -431,7 +454,7 @@ export class SABnzbdClient implements IDownloadClient {
 				// Fetch NZB content ourselves instead of sending URL to SABnzbd
 				// This avoids issues where SABnzbd gets blocked by Cloudflare/indexers
 				const sanitizedUrl = options.downloadUrl.replace(/apikey=[^&]+/, 'apikey=***');
-				logger.info('[SABnzbd] Fetching NZB from URL', { url: sanitizedUrl });
+				logger.info({ url: sanitizedUrl }, '[SABnzbd] Fetching NZB from URL');
 
 				let nzbResponse: Response;
 				try {
@@ -443,19 +466,25 @@ export class SABnzbdClient implements IDownloadClient {
 					});
 				} catch (fetchError) {
 					const message = fetchError instanceof Error ? fetchError.message : 'Unknown error';
-					logger.error('[SABnzbd] Network error fetching NZB', {
-						url: sanitizedUrl,
-						error: message
-					});
+					logger.error(
+						{
+							url: sanitizedUrl,
+							err: fetchError
+						},
+						'[SABnzbd] Network error fetching NZB'
+					);
 					throw new Error(`Network error fetching NZB: ${message}`, { cause: fetchError });
 				}
 
 				if (!nzbResponse.ok) {
-					logger.error('[SABnzbd] HTTP error fetching NZB', {
-						url: sanitizedUrl,
-						status: nzbResponse.status,
-						statusText: nzbResponse.statusText
-					});
+					logger.error(
+						{
+							url: sanitizedUrl,
+							status: nzbResponse.status,
+							statusText: nzbResponse.statusText
+						},
+						'[SABnzbd] HTTP error fetching NZB'
+					);
 					throw new Error(
 						`Failed to fetch NZB: HTTP ${nzbResponse.status} ${nzbResponse.statusText}`
 					);
@@ -473,21 +502,27 @@ export class SABnzbdClient implements IDownloadClient {
 					const errorType = this.detectNzbErrorType(contentType, nzbStart);
 					const preview = nzbStart.substring(0, 100).replace(/\s+/g, ' ').trim();
 
-					logger.error('[SABnzbd] Response is not a valid NZB', undefined, {
-						url: sanitizedUrl,
-						contentType,
-						errorType,
-						preview,
-						responseSize: nzbData.length
-					});
+					logger.error(
+						{
+							url: sanitizedUrl,
+							contentType,
+							errorType,
+							preview,
+							responseSize: nzbData.length
+						},
+						'[SABnzbd] Response is not a valid NZB'
+					);
 
 					throw new Error(`Invalid NZB response: ${errorType}`);
 				}
 
-				logger.info('[SABnzbd] NZB fetched successfully, uploading to SABnzbd', {
-					size: nzbData.length,
-					contentType
-				});
+				logger.info(
+					{
+						size: nzbData.length,
+						contentType
+					},
+					'[SABnzbd] NZB fetched successfully, uploading to SABnzbd'
+				);
 
 				// Upload as file
 				response = await this.proxy.downloadNzb(nzbData, filename, options.category, priority);
@@ -500,7 +535,7 @@ export class SABnzbdClient implements IDownloadClient {
 			}
 
 			const nzoId = response.nzo_ids[0];
-			logger.info('[SABnzbd] Download added successfully', { nzoId });
+			logger.info({ nzoId }, '[SABnzbd] Download added successfully');
 
 			// Pause if requested
 			if (options.paused) {
@@ -509,14 +544,16 @@ export class SABnzbdClient implements IDownloadClient {
 
 			return nzoId;
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[SABnzbd] Failed to add download', {
-				title: options.title,
-				category: options.category,
-				hasUrl: !!options.downloadUrl,
-				hasFile: !!(options.nzbFile || options.torrentFile),
-				error: message
-			});
+			logger.error(
+				{
+					title: options.title,
+					category: options.category,
+					hasUrl: !!options.downloadUrl,
+					hasFile: !!(options.nzbFile || options.torrentFile),
+					err: error
+				},
+				'[SABnzbd] Failed to add download'
+			);
 			throw error;
 		}
 	}
@@ -546,13 +583,16 @@ export class SABnzbdClient implements IDownloadClient {
 			} else {
 				logger.debug(`[SABnzbd] Fetched ${history.slots.length} history items`);
 				for (const item of history.slots) {
-					logger.debug(`[SABnzbd] History item`, {
-						nzo_id: item.nzo_id,
-						name: item.name,
-						category: item.category,
-						status: item.status,
-						storage: item.storage
-					});
+					logger.debug(
+						{
+							nzo_id: item.nzo_id,
+							name: item.name,
+							category: item.category,
+							status: item.status,
+							storage: item.storage
+						},
+						`[SABnzbd] History item`
+					);
 					const mappedItem = await this.mapHistoryItemAsync(item, sabConfig);
 					downloadMap.set(item.nzo_id, mappedItem);
 				}
@@ -560,25 +600,34 @@ export class SABnzbdClient implements IDownloadClient {
 
 			// Get queue items - only add if not already in map (history takes priority)
 			const queue = await this.proxy.getQueue(0, 1000);
-			logger.debug(`[SABnzbd] Fetched ${queue.slots.length} queue items`, {
-				categoryFilter: category
-			});
+			logger.debug(
+				{
+					categoryFilter: category
+				},
+				`[SABnzbd] Fetched ${queue.slots.length} queue items`
+			);
 			for (const item of queue.slots) {
 				// Skip if already have this item from history (history has valid paths)
 				if (downloadMap.has(item.nzo_id)) {
-					logger.debug(`[SABnzbd] Skipping queue item - already in history`, {
-						nzo_id: item.nzo_id,
-						queueStatus: item.status
-					});
+					logger.debug(
+						{
+							nzo_id: item.nzo_id,
+							queueStatus: item.status
+						},
+						`[SABnzbd] Skipping queue item - already in history`
+					);
 					continue;
 				}
 
-				logger.debug(`[SABnzbd] Queue item`, {
-					nzo_id: item.nzo_id,
-					filename: item.filename,
-					cat: item.cat,
-					status: item.status
-				});
+				logger.debug(
+					{
+						nzo_id: item.nzo_id,
+						filename: item.filename,
+						cat: item.cat,
+						status: item.status
+					},
+					`[SABnzbd] Queue item`
+				);
 				if (!category || item.cat === category) {
 					downloadMap.set(item.nzo_id, this.mapQueueItem(item));
 				}
@@ -586,8 +635,7 @@ export class SABnzbdClient implements IDownloadClient {
 
 			return Array.from(downloadMap.values());
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			logger.error('[SABnzbd] Failed to get downloads', { error: message });
+			logger.error({ err: error }, '[SABnzbd] Failed to get downloads');
 			throw error;
 		}
 	}
@@ -612,7 +660,7 @@ export class SABnzbdClient implements IDownloadClient {
 
 			return null;
 		} catch (error) {
-			logger.error('[SABnzbd] Failed to get download', { id, error });
+			logger.error({ id, err: error }, '[SABnzbd] Failed to get download');
 			throw error;
 		}
 	}
@@ -626,15 +674,15 @@ export class SABnzbdClient implements IDownloadClient {
 			const queueItem = await this.proxy.getQueueItem(id);
 			if (queueItem) {
 				await this.proxy.removeFrom('queue', id, deleteFiles);
-				logger.info('[SABnzbd] Removed from queue', { id });
+				logger.info({ id }, '[SABnzbd] Removed from queue');
 				return;
 			}
 
 			// Try removing from history
 			await this.proxy.removeFrom('history', id, deleteFiles);
-			logger.info('[SABnzbd] Removed from history', { id });
+			logger.info({ id }, '[SABnzbd] Removed from history');
 		} catch (error) {
-			logger.error('[SABnzbd] Failed to remove download', { id, error });
+			logger.error({ id, err: error }, '[SABnzbd] Failed to remove download');
 			throw error;
 		}
 	}
@@ -645,9 +693,9 @@ export class SABnzbdClient implements IDownloadClient {
 	async pauseDownload(id: string): Promise<void> {
 		try {
 			await this.proxy.pause(id);
-			logger.info('[SABnzbd] Download paused', { id });
+			logger.info({ id }, '[SABnzbd] Download paused');
 		} catch (error) {
-			logger.error('[SABnzbd] Failed to pause download', { id, error });
+			logger.error({ id, err: error }, '[SABnzbd] Failed to pause download');
 			throw error;
 		}
 	}
@@ -658,9 +706,9 @@ export class SABnzbdClient implements IDownloadClient {
 	async resumeDownload(id: string): Promise<void> {
 		try {
 			await this.proxy.resume(id);
-			logger.info('[SABnzbd] Download resumed', { id });
+			logger.info({ id }, '[SABnzbd] Download resumed');
 		} catch (error) {
-			logger.error('[SABnzbd] Failed to resume download', { id, error });
+			logger.error({ id, err: error }, '[SABnzbd] Failed to resume download');
 			throw error;
 		}
 	}
@@ -672,10 +720,10 @@ export class SABnzbdClient implements IDownloadClient {
 	async retryDownload(id: string): Promise<string | undefined> {
 		try {
 			const newId = await this.proxy.retry(id);
-			logger.info('[SABnzbd] Download retry initiated', { id, newId });
+			logger.info({ id, newId }, '[SABnzbd] Download retry initiated');
 			return newId;
 		} catch (error) {
-			logger.error('[SABnzbd] Failed to retry download', { id, error });
+			logger.error({ id, err: error }, '[SABnzbd] Failed to retry download');
 			throw error;
 		}
 	}
@@ -688,7 +736,7 @@ export class SABnzbdClient implements IDownloadClient {
 			const config = await this.proxy.getConfig();
 			return config.misc.complete_dir;
 		} catch (error) {
-			logger.error('[SABnzbd] Failed to get default save path', { error });
+			logger.error({ err: error }, '[SABnzbd] Failed to get default save path');
 			throw error;
 		}
 	}
@@ -702,7 +750,7 @@ export class SABnzbdClient implements IDownloadClient {
 			const config = await this.getCachedConfig();
 			return config.misc.complete_dir;
 		} catch (error) {
-			logger.warn('[SABnzbd] Failed to get base path', { error });
+			logger.warn({ err: error }, '[SABnzbd] Failed to get base path');
 			return undefined;
 		}
 	}
@@ -715,7 +763,7 @@ export class SABnzbdClient implements IDownloadClient {
 		try {
 			return await this.proxy.getCategories();
 		} catch (error) {
-			logger.error('[SABnzbd] Failed to get categories', { error });
+			logger.error({ err: error }, '[SABnzbd] Failed to get categories');
 			throw error;
 		}
 	}
@@ -731,12 +779,15 @@ export class SABnzbdClient implements IDownloadClient {
 			const exists = config.categories.some((c) => c.name.toLowerCase() === name.toLowerCase());
 
 			if (!exists) {
-				logger.warn('[SABnzbd] Category does not exist and cannot be created via API', {
-					category: name
-				});
+				logger.warn(
+					{
+						category: name
+					},
+					'[SABnzbd] Category does not exist and cannot be created via API'
+				);
 			}
 		} catch (error) {
-			logger.error('[SABnzbd] Failed to check category', { name, error });
+			logger.error({ name, err: error }, '[SABnzbd] Failed to check category');
 			throw error;
 		}
 	}
@@ -774,15 +825,21 @@ export class SABnzbdClient implements IDownloadClient {
 				}
 			}
 
-			logger.info('[SABnzbd] Fetched NNTP servers', {
-				count: servers.length,
-				note: 'Passwords masked by SABnzbd API - user must enter manually'
-			});
+			logger.info(
+				{
+					count: servers.length,
+					note: 'Passwords masked by SABnzbd API - user must enter manually'
+				},
+				'[SABnzbd] Fetched NNTP servers'
+			);
 			return servers;
 		} catch (error) {
-			logger.error('[SABnzbd] Failed to fetch NNTP servers', {
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					err: error
+				},
+				'[SABnzbd] Failed to fetch NNTP servers'
+			);
 			return [];
 		}
 	}
@@ -859,14 +916,17 @@ export class SABnzbdClient implements IDownloadClient {
 		const outputPath = await this.resolveOutputPath(item, sabConfig);
 
 		if (this.config.normalizeCategoryDir) {
-			logger.debug('[SABnzbd] Resolved output path (normalized)', {
-				nzo_id: item.nzo_id,
-				storage: item.storage,
-				path: item.path,
-				category: item.category,
-				baseDir,
-				outputPath
-			});
+			logger.debug(
+				{
+					nzo_id: item.nzo_id,
+					storage: item.storage,
+					path: item.path,
+					category: item.category,
+					baseDir,
+					outputPath
+				},
+				'[SABnzbd] Resolved output path (normalized)'
+			);
 		}
 
 		// Only truly completed if status is 'Completed' AND storage path is valid
@@ -874,13 +934,16 @@ export class SABnzbdClient implements IDownloadClient {
 		const isCompleted = item.status === 'Completed' && hasValidStorage;
 
 		if (item.status === 'Completed' && !hasValidStorage) {
-			logger.warn('[SABnzbd] Item marked Completed but storage path is invalid', {
-				nzo_id: item.nzo_id,
-				name: item.name,
-				storage: item.storage,
-				baseDir,
-				resolvedPath: outputPath
-			});
+			logger.warn(
+				{
+					nzo_id: item.nzo_id,
+					name: item.name,
+					storage: item.storage,
+					baseDir,
+					resolvedPath: outputPath
+				},
+				'[SABnzbd] Item marked Completed but storage path is invalid'
+			);
 		}
 
 		return {

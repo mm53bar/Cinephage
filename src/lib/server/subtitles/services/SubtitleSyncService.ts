@@ -22,7 +22,9 @@ import {
 	rootFolders
 } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import type { SubtitleSyncResult } from '../types';
 
 const execFileAsync = promisify(execFile);
@@ -152,10 +154,13 @@ export class SubtitleSyncService {
 				matchScore: subtitle[0].matchScore
 			});
 
-			logger.info('Subtitle synced successfully', {
-				subtitleId,
-				offsetMs: result.offsetMs
-			});
+			logger.info(
+				{
+					subtitleId,
+					offsetMs: result.offsetMs
+				},
+				'Subtitle synced successfully'
+			);
 		}
 
 		return result;
@@ -284,7 +289,7 @@ export class SubtitleSyncService {
 		}
 
 		try {
-			logger.debug('Running ffsubsync', { binary: this.ffsubsyncBinary, args: execArgs });
+			logger.debug({ binary: this.ffsubsyncBinary, args: execArgs }, 'Running ffsubsync');
 
 			const { stdout, stderr } = await execFileAsync(this.ffsubsyncBinary, execArgs, {
 				timeout: 300000 // 5 minute timeout
@@ -314,7 +319,7 @@ export class SubtitleSyncService {
 			};
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
-			logger.error('ffsubsync failed', { error: errorMsg });
+			logger.error({ err: error }, 'ffsubsync failed');
 
 			// Clean up partial output
 			if (existsSync(outputPath)) {

@@ -155,14 +155,13 @@ DOWNLOAD_CLIENT_FAILURES_BEFORE_FAILING=5
 ### Reduce Logging
 
 ```bash
-LOG_MAX_SIZE_MB=5
-LOG_MAX_FILES=3
+LOG_LEVEL=warn
 ```
 
-### Disable File Logging
+### Stack Traces in Production
 
 ```bash
-LOG_TO_FILE=false
+LOG_INCLUDE_STACK=false
 ```
 
 ---

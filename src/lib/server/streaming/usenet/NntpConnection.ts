@@ -10,13 +10,15 @@
 
 import * as net from 'net';
 import * as tls from 'tls';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import {
 	type NntpConnectionState,
 	type NntpResponse,
 	type ClassifiedError,
 	NntpResponseCode
 } from './types';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 
 const CRLF = '\r\n';
 

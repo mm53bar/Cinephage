@@ -230,7 +230,9 @@
 
 			await loadAccounts();
 		} catch (e) {
-			console.error('Failed to toggle account:', e);
+			toasts.error('Failed to update account', {
+				description: e instanceof Error ? e.message : 'Failed to update account'
+			});
 		}
 	}
 
@@ -294,7 +296,6 @@
 				});
 			}
 		} catch (e) {
-			console.error('Failed to test account:', e);
 			toasts.error(`Connection test failed: ${account.name}`, {
 				description: e instanceof Error ? e.message : 'Failed to test account'
 			});
@@ -319,7 +320,9 @@
 
 			await loadAccounts();
 		} catch (e) {
-			console.error('Failed to sync account:', e);
+			toasts.error('Failed to sync account', {
+				description: e instanceof Error ? e.message : 'Failed to sync account'
+			});
 		} finally {
 			syncingId = null;
 		}

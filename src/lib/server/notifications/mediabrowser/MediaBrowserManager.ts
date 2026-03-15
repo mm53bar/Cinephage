@@ -6,7 +6,9 @@
 import { db } from '$lib/server/db';
 import { mediaBrowserServers, type MediaBrowserServerRecord } from '$lib/server/db/schema';
 import { eq, asc } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 import { randomUUID } from 'crypto';
 import { MediaBrowserClient } from './MediaBrowserClient';
 import type {
@@ -147,7 +149,7 @@ class MediaBrowserManager {
 		};
 
 		const [created] = await db.insert(mediaBrowserServers).values(newServer).returning();
-		logger.info('[MediaBrowserManager] Created server', { id: created.id, name: created.name });
+		logger.info({ id: created.id, name: created.name }, '[MediaBrowserManager] Created server');
 		return toPublicInfo(created);
 	}
 
@@ -189,7 +191,7 @@ class MediaBrowserManager {
 			.where(eq(mediaBrowserServers.id, id))
 			.returning();
 
-		logger.info('[MediaBrowserManager] Updated server', { id, name: updated.name });
+		logger.info({ id, name: updated.name }, '[MediaBrowserManager] Updated server');
 		return toPublicInfo(updated);
 	}
 
@@ -205,7 +207,7 @@ class MediaBrowserManager {
 		await db.delete(mediaBrowserServers).where(eq(mediaBrowserServers.id, id));
 		this.clearClientCache(id);
 
-		logger.info('[MediaBrowserManager] Deleted server', { id, name: existing.name });
+		logger.info({ id, name: existing.name }, '[MediaBrowserManager] Deleted server');
 		return true;
 	}
 

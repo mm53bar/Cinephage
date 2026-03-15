@@ -41,12 +41,10 @@ environment:
 | `PUBLIC_BASE_URL` | Public-facing base URL for generated links | -                                             |
 | `TZ`              | Timezone                                   | UTC                                           |
 | `DATA_DIR`        | Database and data location                 | data                                          |
-| `LOG_DIR`         | Log file directory                         | logs                                          |
 
 Docker image defaults:
 
 - `DATA_DIR=/config/data`
-- `LOG_DIR=/config/logs`
 - `INDEXER_DEFINITIONS_PATH=/config/data/indexers/definitions`
 
 ### URL Variables
@@ -90,24 +88,15 @@ BETTER_AUTH_URL=cinephage.example.com  # Missing protocol
 
 | Variable            | Description                                       | Default                |
 | ------------------- | ------------------------------------------------- | ---------------------- |
-| `LOG_TO_FILE`       | Enable file logging                               | true                   |
-| `LOG_MAX_SIZE_MB`   | Max log file size                                 | 10                     |
-| `LOG_MAX_FILES`     | Number of log files to keep                       | 5                      |
+| `LOG_LEVEL`         | Minimum log level emitted to stdout               | Dev: debug, Prod: info |
 | `LOG_INCLUDE_STACK` | Include stack traces in logs (`true`/`false`)     | Dev: true, Prod: false |
 | `LOG_SENSITIVE`     | Disable redaction of secrets in logs (debug only) | false                  |
 
-### Log Rotation
+Logs are written to stdout/stderr. For retention, rotation, and aggregation, use your runtime platform:
 
-Logs rotate automatically when they reach `LOG_MAX_SIZE_MB`:
-
-```
-logs/
-  cinephage.log       ← Current log
-  cinephage.log.1     ← Previous
-  cinephage.log.2     ← Older
-  ...
-  cinephage.log.5     ← Oldest (deleted when new rotation)
-```
+- Docker: `docker logs cinephage`
+- systemd: `journalctl -u cinephage`
+- Kubernetes: `kubectl logs`
 
 ---
 
@@ -326,13 +315,10 @@ TZ=America/New_York
 
 # Paths
 DATA_DIR=data
-LOG_DIR=logs
 FFPROBE_PATH=/usr/bin/ffprobe
 
 # Logging
-LOG_TO_FILE=true
-LOG_MAX_SIZE_MB=10
-LOG_MAX_FILES=5
+LOG_LEVEL=info
 LOG_INCLUDE_STACK=false
 LOG_SENSITIVE=false
 

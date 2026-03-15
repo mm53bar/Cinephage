@@ -77,10 +77,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (mediaType === 'movie') {
 			await db.update(movies).set(updateData).where(inArray(movies.id, mediaIds));
 
-			logger.info('[BulkAssign] Updated movies with language profile', {
-				count: mediaIds.length,
-				languageProfileId
-			});
+			logger.info(
+				{
+					count: mediaIds.length,
+					languageProfileId
+				},
+				'[BulkAssign] Updated movies with language profile'
+			);
 
 			// Trigger subtitle search for movies with files
 			if (shouldEnableSubtitles) {
@@ -93,9 +96,12 @@ export const POST: RequestHandler = async ({ request }) => {
 						.where(and(inArray(movies.id, mediaIds), eq(movies.hasFile, true)));
 
 					if (moviesWithFiles.length > 0) {
-						logger.info('[BulkAssign] Triggering subtitle search for movies', {
-							count: moviesWithFiles.length
-						});
+						logger.info(
+							{
+								count: moviesWithFiles.length
+							},
+							'[BulkAssign] Triggering subtitle search for movies'
+						);
 
 						const items = moviesWithFiles.map((m) => ({
 							mediaType: 'movie' as const,
@@ -104,9 +110,12 @@ export const POST: RequestHandler = async ({ request }) => {
 
 						// Fire-and-forget
 						searchSubtitlesForMediaBatch(items).catch((err) => {
-							logger.warn('[BulkAssign] Background subtitle search failed for movies', {
-								error: err instanceof Error ? err.message : String(err)
-							});
+							logger.warn(
+								{
+									error: err instanceof Error ? err.message : String(err)
+								},
+								'[BulkAssign] Background subtitle search failed for movies'
+							);
 						});
 					}
 				}
@@ -114,10 +123,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		} else {
 			await db.update(series).set(updateData).where(inArray(series.id, mediaIds));
 
-			logger.info('[BulkAssign] Updated series with language profile', {
-				count: mediaIds.length,
-				languageProfileId
-			});
+			logger.info(
+				{
+					count: mediaIds.length,
+					languageProfileId
+				},
+				'[BulkAssign] Updated series with language profile'
+			);
 
 			// Trigger subtitle search for episodes with files
 			if (shouldEnableSubtitles) {
@@ -130,10 +142,13 @@ export const POST: RequestHandler = async ({ request }) => {
 						.where(and(inArray(episodes.seriesId, mediaIds), eq(episodes.hasFile, true)));
 
 					if (episodesWithFiles.length > 0) {
-						logger.info('[BulkAssign] Triggering subtitle search for episodes', {
-							seriesCount: mediaIds.length,
-							episodeCount: episodesWithFiles.length
-						});
+						logger.info(
+							{
+								seriesCount: mediaIds.length,
+								episodeCount: episodesWithFiles.length
+							},
+							'[BulkAssign] Triggering subtitle search for episodes'
+						);
 
 						const items = episodesWithFiles.map((ep) => ({
 							mediaType: 'episode' as const,
@@ -142,9 +157,12 @@ export const POST: RequestHandler = async ({ request }) => {
 
 						// Fire-and-forget
 						searchSubtitlesForMediaBatch(items).catch((err) => {
-							logger.warn('[BulkAssign] Background subtitle search failed for episodes', {
-								error: err instanceof Error ? err.message : String(err)
-							});
+							logger.warn(
+								{
+									error: err instanceof Error ? err.message : String(err)
+								},
+								'[BulkAssign] Background subtitle search failed for episodes'
+							);
 						});
 					}
 				}
@@ -156,11 +174,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			updated: mediaIds.length
 		});
 	} catch (error) {
-		logger.error('[BulkAssign] Failed to bulk assign language profile', {
-			error: error instanceof Error ? error.message : String(error),
-			mediaType,
-			mediaIds: mediaIds.length
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error),
+				mediaType,
+				mediaIds: mediaIds.length
+			},
+			'[BulkAssign] Failed to bulk assign language profile'
+		);
 
 		return json(
 			{

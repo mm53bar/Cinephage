@@ -31,9 +31,12 @@ export const GET: RequestHandler = async () => {
 				const accounts = await manager.getAccounts();
 				send('accounts:initial', { accounts });
 			} catch (error) {
-				logger.error('Failed to fetch initial LiveTV accounts state', {
-					error: error instanceof Error ? error.message : 'Unknown error'
-				});
+				logger.error(
+					{
+						error: error instanceof Error ? error.message : 'Unknown error'
+					},
+					'Failed to fetch initial LiveTV accounts state'
+				);
 				send('accounts:error', { message: 'Failed to fetch initial state' });
 			}
 		};

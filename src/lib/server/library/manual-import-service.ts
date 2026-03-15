@@ -5,7 +5,9 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '$lib/server/db/index.js';
 import { movies, rootFolders, series, unmatchedFiles } from '$lib/server/db/schema.js';
 import { tmdb } from '$lib/server/tmdb.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 import { parseRelease, extractExternalIds } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { isVideoFile, mediaInfoService, MediaInfoService } from '$lib/server/library/media-info.js';
 import { unmatchedFileService } from '$lib/server/library/unmatched-file-service.js';
@@ -132,10 +134,13 @@ export class ManualImportService {
 			try {
 				groups.push(await this.detectGroupFromPath(groupPath, preferredMediaType));
 			} catch (error) {
-				logger.warn('[ManualImport] Skipping group that failed detection', {
-					groupPath,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						groupPath,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'[ManualImport] Skipping group that failed detection'
+				);
 			}
 		}
 
@@ -712,17 +717,23 @@ export class ManualImportService {
 			const entryPath = join(fullPath, entry.name);
 			const normalizedEntryPath = resolve(entryPath);
 			if (!this.isPathWithinRoot(normalizedEntryPath, fullPath)) {
-				logger.warn('[ManualImport] Skipping path outside requested import scope', {
-					rootPath: fullPath,
-					fullPath: normalizedEntryPath
-				});
+				logger.warn(
+					{
+						rootPath: fullPath,
+						fullPath: normalizedEntryPath
+					},
+					'[ManualImport] Skipping path outside requested import scope'
+				);
 				continue;
 			}
 
 			if (entry.isSymbolicLink()) {
-				logger.debug('[ManualImport] Skipping symlink while grouping import scan', {
-					entryPath: normalizedEntryPath
-				});
+				logger.debug(
+					{
+						entryPath: normalizedEntryPath
+					},
+					'[ManualImport] Skipping symlink while grouping import scan'
+				);
 				continue;
 			}
 
@@ -869,10 +880,13 @@ export class ManualImportService {
 		} catch (error) {
 			const fsError = error as NodeJS.ErrnoException;
 			if (fsError?.code === 'ENOENT' || fsError?.code === 'EACCES' || fsError?.code === 'EPERM') {
-				logger.debug('[ManualImport] Skipping inaccessible directory while checking for media', {
-					directoryPath,
-					code: fsError.code
-				});
+				logger.debug(
+					{
+						directoryPath,
+						code: fsError.code
+					},
+					'[ManualImport] Skipping inaccessible directory while checking for media'
+				);
 				return false;
 			}
 			throw error;
@@ -1091,10 +1105,13 @@ export class ManualImportService {
 		try {
 			return await mediaInfoService.extractMediaInfo(sourceFilePath, { allowStrmProbe: true });
 		} catch (error) {
-			logger.debug('[ManualImport] Probe failed while preparing naming metadata', {
-				sourceFilePath,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.debug(
+				{
+					sourceFilePath,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[ManualImport] Probe failed while preparing naming metadata'
+			);
 			return null;
 		}
 	}
@@ -1224,10 +1241,13 @@ export class ManualImportService {
 		} catch (error) {
 			const fsError = error as NodeJS.ErrnoException;
 			if (fsError?.code === 'ENOENT' || fsError?.code === 'EACCES' || fsError?.code === 'EPERM') {
-				logger.debug('[ManualImport] Skipping inaccessible directory during scan', {
-					dirPath,
-					code: fsError.code
-				});
+				logger.debug(
+					{
+						dirPath,
+						code: fsError.code
+					},
+					'[ManualImport] Skipping inaccessible directory during scan'
+				);
 				return;
 			}
 			throw error;
@@ -1242,15 +1262,18 @@ export class ManualImportService {
 			const fullPath = join(dirPath, entryName);
 			const normalizedFullPath = resolve(fullPath);
 			if (!this.isPathWithinRoot(normalizedFullPath, rootPath)) {
-				logger.warn('[ManualImport] Skipping path outside requested import scope', {
-					rootPath,
-					fullPath: normalizedFullPath
-				});
+				logger.warn(
+					{
+						rootPath,
+						fullPath: normalizedFullPath
+					},
+					'[ManualImport] Skipping path outside requested import scope'
+				);
 				continue;
 			}
 
 			if (entry.isSymbolicLink()) {
-				logger.debug('[ManualImport] Skipping symlink during import scan', { fullPath });
+				logger.debug({ fullPath }, '[ManualImport] Skipping symlink during import scan');
 				continue;
 			}
 
@@ -1264,10 +1287,13 @@ export class ManualImportService {
 						fsError?.code === 'EACCES' ||
 						fsError?.code === 'EPERM'
 					) {
-						logger.debug('[ManualImport] Skipping transient nested directory during scan', {
-							fullPath,
-							code: fsError.code
-						});
+						logger.debug(
+							{
+								fullPath,
+								code: fsError.code
+							},
+							'[ManualImport] Skipping transient nested directory during scan'
+						);
 						continue;
 					}
 					throw error;
@@ -1285,10 +1311,13 @@ export class ManualImportService {
 			} catch (error) {
 				const fsError = error as NodeJS.ErrnoException;
 				if (fsError?.code === 'ENOENT' || fsError?.code === 'EACCES' || fsError?.code === 'EPERM') {
-					logger.debug('[ManualImport] Skipping inaccessible file during scan', {
-						fullPath,
-						code: fsError.code
-					});
+					logger.debug(
+						{
+							fullPath,
+							code: fsError.code
+						},
+						'[ManualImport] Skipping inaccessible file during scan'
+					);
 					continue;
 				}
 				throw error;
@@ -1426,12 +1455,14 @@ export class ManualImportService {
 			return matches;
 		} catch (error) {
 			logger.error(
-				'[ManualImport] Failed to find TMDB matches',
-				error instanceof Error ? error : undefined,
 				{
-					title,
-					mediaType
-				}
+					err: error instanceof Error ? error : undefined,
+					...{
+						title,
+						mediaType
+					}
+				},
+				'[ManualImport] Failed to find TMDB matches'
 			);
 			return [];
 		}

@@ -11,7 +11,6 @@ Protect your Cinephage data with regular backups.
 | `data/cinephage.db`          | Database (all settings, library, queue) | Critical |
 | `.env`                       | Environment configuration               | High     |
 | `data/indexers/definitions/` | Custom indexer definitions              | Medium   |
-| `logs/`                      | Application logs                        | Low      |
 
 ---
 

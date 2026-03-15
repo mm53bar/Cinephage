@@ -118,7 +118,6 @@ export function createSearchProgress() {
 								try {
 									eventData = JSON.parse(line.slice(6));
 								} catch {
-									console.error('[SSE] Failed to parse event data:', line);
 									eventData = null;
 								}
 							} else if (line === '' && eventType) {

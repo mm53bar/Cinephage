@@ -14,7 +14,7 @@ import { getStreamCache } from '$lib/server/streaming/cache/StreamCache';
 import { getCinephageBackendClient } from '$lib/server/indexers/streaming/CinephageBackendClient';
 import { logger } from '$lib/logging';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /**
  * Response structure for streaming status

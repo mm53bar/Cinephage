@@ -15,6 +15,7 @@
 	import type { LiveTvProviderType } from '$lib/types/livetv';
 	import type { LiveTvAccount, LiveTvCategory, CachedChannel } from '$lib/types/livetv';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	type BrowserMode = 'add-to-lineup' | 'select-backup';
 
@@ -188,7 +189,9 @@
 				accounts = result.accounts?.filter((a: LiveTvAccount) => a.enabled) || [];
 			}
 		} catch (e) {
-			console.error('Failed to load accounts:', e);
+			toasts.error('Failed to load accounts', {
+				description: e instanceof Error ? e.message : 'Failed to load accounts'
+			});
 		}
 	}
 
@@ -201,7 +204,9 @@
 				selectedCategoryId = '';
 			}
 		} catch (e) {
-			console.error('Failed to load categories:', e);
+			toasts.error('Failed to load categories', {
+				description: e instanceof Error ? e.message : 'Failed to load categories'
+			});
 			categories = [];
 		}
 	}
@@ -295,7 +300,9 @@
 
 			onChannelsAdded();
 		} catch (e) {
-			console.error('Failed to add channel:', e);
+			toasts.error('Failed to add channel', {
+				description: e instanceof Error ? e.message : 'Failed to add channel'
+			});
 		} finally {
 			addingIds.delete(channel.id);
 		}

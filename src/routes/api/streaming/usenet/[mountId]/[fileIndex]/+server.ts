@@ -47,11 +47,14 @@ export const GET: RequestHandler = async ({ params, request }) => {
 			headers['Content-Range'] = `bytes ${result.startByte}-${result.endByte}/${result.totalSize}`;
 			headers['Content-Length'] = String(result.contentLength);
 
-			logger.debug('[UsenetStream] Serving partial content', {
-				mountId,
-				fileIndex: fileIndexNum,
-				range: `${result.startByte}-${result.endByte}/${result.totalSize}`
-			});
+			logger.debug(
+				{
+					mountId,
+					fileIndex: fileIndexNum,
+					range: `${result.startByte}-${result.endByte}/${result.totalSize}`
+				},
+				'[UsenetStream] Serving partial content'
+			);
 
 			return new Response(webStream, {
 				status: 206,
@@ -62,11 +65,14 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		// 200 OK for full content
 		headers['Content-Length'] = String(result.totalSize);
 
-		logger.debug('[UsenetStream] Serving full content', {
-			mountId,
-			fileIndex: fileIndexNum,
-			size: result.totalSize
-		});
+		logger.debug(
+			{
+				mountId,
+				fileIndex: fileIndexNum,
+				size: result.totalSize
+			},
+			'[UsenetStream] Serving full content'
+		);
 
 		return new Response(webStream, {
 			status: 200,
@@ -76,7 +82,7 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 
 		if (message.includes('not found') || message.includes('not available')) {
-			logger.warn('[UsenetStream] Not found', { mountId, fileIndex: fileIndexNum, error: message });
+			logger.warn({ mountId, fileIndex: fileIndexNum, error: message }, '[UsenetStream] Not found');
 			return new Response(message, { status: 404 });
 		}
 
@@ -84,11 +90,14 @@ export const GET: RequestHandler = async ({ params, request }) => {
 			return new Response(message, { status: 503 });
 		}
 
-		logger.error('[UsenetStream] Stream error', {
-			mountId,
-			fileIndex: fileIndexNum,
-			error: message
-		});
+		logger.error(
+			{
+				mountId,
+				fileIndex: fileIndexNum,
+				error: message
+			},
+			'[UsenetStream] Stream error'
+		);
 
 		return new Response('Stream error', { status: 500 });
 	}

@@ -7,23 +7,25 @@ import {
 	getMissingEpisodes
 } from '$lib/server/dashboard/queries';
 
-export const load: PageServerLoad = async ({ setHeaders }) => {
+export const load: PageServerLoad = async () => {
 	try {
 		// Fetch critical stats immediately (blocks SSR)
 		const stats = await getDashboardStats();
 
 		// Stream non-critical data using SvelteKit's streaming
 		const recentlyAddedPromise = getRecentlyAdded().catch((error) => {
-			logger.error('[Dashboard] Error fetching recently added', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{ err: error, component: 'DashboardPage' },
+				'[Dashboard] Error fetching recently added'
+			);
 			return { movies: [], series: [] };
 		});
 
 		const missingEpisodesPromise = getMissingEpisodes().catch((error) => {
-			logger.error('[Dashboard] Error fetching missing episodes', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{ err: error, component: 'DashboardPage' },
+				'[Dashboard] Error fetching missing episodes'
+			);
 			return [];
 		});
 
@@ -36,9 +38,10 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
 			)
 			.then((result) => result.activities)
 			.catch((error) => {
-				logger.error('[Dashboard] Error fetching activity', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error(
+					{ err: error, component: 'DashboardPage' },
+					'[Dashboard] Error fetching activity'
+				);
 				return [];
 			});
 
@@ -50,8 +53,8 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
 		};
 	} catch (error) {
 		logger.error(
-			'[Dashboard] Error loading dashboard data',
-			error instanceof Error ? error : undefined
+			{ err: error, component: 'DashboardPage' },
+			'[Dashboard] Error loading dashboard data'
 		);
 		return {
 			stats: {

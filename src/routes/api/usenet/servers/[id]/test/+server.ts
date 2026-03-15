@@ -25,12 +25,15 @@ export const POST: RequestHandler = async (event) => {
 		return json({ error: 'Server not found' }, { status: 404 });
 	}
 
-	logger.info('[NNTP Test] Testing connection', {
-		id: server.id,
-		host: server.host,
-		port: server.port,
-		useSsl: server.useSsl
-	});
+	logger.info(
+		{
+			id: server.id,
+			host: server.host,
+			port: server.port,
+			useSsl: server.useSsl
+		},
+		'[NNTP Test] Testing connection'
+	);
 
 	const result = await testNntpConnection(
 		server.host,
@@ -44,13 +47,13 @@ export const POST: RequestHandler = async (event) => {
 	await service.updateTestResult(server.id, result.success ? 'success' : 'failed', result.error);
 
 	if (result.success) {
-		logger.info('[NNTP Test] Connection successful', { id: server.id, greeting: result.greeting });
+		logger.info({ id: server.id, greeting: result.greeting }, '[NNTP Test] Connection successful');
 		return json({
 			success: true,
 			greeting: result.greeting
 		});
 	} else {
-		logger.warn('[NNTP Test] Connection failed', { id: server.id, error: result.error });
+		logger.warn({ id: server.id, error: result.error }, '[NNTP Test] Connection failed');
 		return json(
 			{
 				success: false,

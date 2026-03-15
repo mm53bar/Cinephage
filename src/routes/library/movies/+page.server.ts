@@ -8,7 +8,7 @@ import {
 	downloadQueue
 } from '$lib/server/db/schema.js';
 import { eq, and, inArray, isNotNull } from 'drizzle-orm';
-import type { PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from './$types';
 import type { LibraryMovie, MovieFile } from '$lib/types/library';
 import { logger } from '$lib/logging';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
@@ -279,7 +279,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			uniqueHdrFormats: [...uniqueHdrFormats].sort()
 		};
 	} catch (error) {
-		logger.error('[Movies Page] Error loading movies', error instanceof Error ? error : undefined);
+		logger.error({ err: error }, '[Movies Page] Error loading movies');
 		const emptyMovies: LibraryMovie[] = [];
 		const emptyProfiles: QualityProfileSummary[] = [];
 		const emptyStrings: string[] = [];
@@ -306,7 +306,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	}
 };
 
-export const actions = {
+export const actions: Actions = {
 	toggleAllMonitored: async ({ request }) => {
 		const formData = await request.formData();
 		const monitored = formData.get('monitored') === 'true';
@@ -315,10 +315,7 @@ export const actions = {
 			await db.update(movies).set({ monitored });
 			return { success: true };
 		} catch (error) {
-			logger.error(
-				'[Movies] Failed to toggle all monitored',
-				error instanceof Error ? error : undefined
-			);
+			logger.error({ err: error }, '[Movies] Failed to toggle all monitored');
 			return { success: false, error: 'Failed to update movies' };
 		}
 	}

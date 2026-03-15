@@ -44,7 +44,9 @@ import {
 	type EnrichmentOptions,
 	type IndexerConfigForEnrichment
 } from '../../quality';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { tmdb } from '$lib/server/tmdb';
 
 /** Options for search orchestration */
@@ -169,11 +171,14 @@ export class SearchOrchestrator {
 			? { ...criteria, searchSource: opts.searchSource }
 			: criteria;
 
-		logger.debug('Starting search orchestration', {
-			criteria: criteriaToString(criteriaWithSource),
-			indexerCount: indexers.length,
-			options: opts
-		});
+		logger.debug(
+			{
+				criteria: criteriaToString(criteriaWithSource),
+				indexerCount: indexers.length,
+				options: opts
+			},
+			'Starting search orchestration'
+		);
 
 		// Enrich criteria with missing IDs (e.g., look up IMDB ID from TMDB ID)
 		const enrichedCriteria = await this.enrichCriteriaWithIds(criteriaWithSource);
@@ -182,7 +187,7 @@ export class SearchOrchestrator {
 		if (opts.useCache) {
 			const cached = this.cache.get(enrichedCriteria);
 			if (cached) {
-				logger.debug('Cache hit', { resultCount: cached.length });
+				logger.debug({ resultCount: cached.length }, 'Cache hit');
 				return {
 					releases: cached,
 					totalResults: cached.length,
@@ -201,9 +206,12 @@ export class SearchOrchestrator {
 		);
 
 		if (eligibleIndexers.length === 0) {
-			logger.warn('No eligible indexers for search', {
-				criteria: criteriaToString(criteria)
-			});
+			logger.warn(
+				{
+					criteria: criteriaToString(criteria)
+				},
+				'No eligible indexers for search'
+			);
 			return {
 				releases: [],
 				totalResults: 0,
@@ -263,11 +271,14 @@ export class SearchOrchestrator {
 			rejectedIndexers
 		};
 
-		logger.info('Search completed', {
-			totalResults: result.totalResults,
-			returned: result.releases.length,
-			timeMs: result.searchTimeMs
-		});
+		logger.info(
+			{
+				totalResults: result.totalResults,
+				returned: result.releases.length,
+				timeMs: result.searchTimeMs
+			},
+			'Search completed'
+		);
 
 		return result;
 	}
@@ -288,11 +299,14 @@ export class SearchOrchestrator {
 			? { ...criteria, searchSource: opts.searchSource }
 			: criteria;
 
-		logger.debug('Starting enhanced search orchestration', {
-			criteria: criteriaToString(criteriaWithSource),
-			indexerCount: indexers.length,
-			enrichment: opts.enrichment
-		});
+		logger.debug(
+			{
+				criteria: criteriaToString(criteriaWithSource),
+				indexerCount: indexers.length,
+				enrichment: opts.enrichment
+			},
+			'Starting enhanced search orchestration'
+		);
 
 		// Enrich criteria with missing IDs (e.g., look up IMDB ID from TMDB ID)
 		const enrichedCriteria = await this.enrichCriteriaWithIds(criteriaWithSource);
@@ -305,9 +319,12 @@ export class SearchOrchestrator {
 		);
 
 		if (eligibleIndexers.length === 0) {
-			logger.warn('No eligible indexers for search', {
-				criteria: criteriaToString(enrichedCriteria)
-			});
+			logger.warn(
+				{
+					criteria: criteriaToString(enrichedCriteria)
+				},
+				'No eligible indexers for search'
+			);
 			return {
 				releases: [],
 				totalResults: 0,
@@ -343,12 +360,15 @@ export class SearchOrchestrator {
 
 		// Debug: log YTS releases after deduplication
 		const ytsAfterDedup = deduped.filter((r) => r.indexerName === 'YTS');
-		logger.info('[SearchOrchestrator] After deduplication', {
-			totalDeduped: deduped.length,
-			ytsCount: ytsAfterDedup.length,
-			ytsTitles: ytsAfterDedup.slice(0, 5).map((r) => r.title),
-			sampleIndexers: deduped.slice(0, 10).map((r) => r.indexerName)
-		});
+		logger.info(
+			{
+				totalDeduped: deduped.length,
+				ytsCount: ytsAfterDedup.length,
+				ytsTitles: ytsAfterDedup.slice(0, 5).map((r) => r.title),
+				sampleIndexers: deduped.slice(0, 10).map((r) => r.indexerName)
+			},
+			'[SearchOrchestrator] After deduplication'
+		);
 
 		// Filter by season/episode if specified
 		let filtered = this.filterBySeasonEpisode(deduped, enrichedCriteria);
@@ -439,12 +459,15 @@ export class SearchOrchestrator {
 		// Debug: log YTS releases after enrichment
 		const ytsAfterEnrich = enrichResult.releases.filter((r) => r.indexerName === 'YTS');
 		if (ytsAfterEnrich.length > 0 || ytsAfterDedup.length > 0) {
-			logger.info('[SearchOrchestrator] YTS releases after enrichment', {
-				countBefore: ytsAfterDedup.length,
-				countAfter: ytsAfterEnrich.length,
-				titles: ytsAfterEnrich.map((r) => r.title),
-				rejected: ytsAfterEnrich.filter((r) => r.rejected).length
-			});
+			logger.info(
+				{
+					countBefore: ytsAfterDedup.length,
+					countAfter: ytsAfterEnrich.length,
+					titles: ytsAfterEnrich.map((r) => r.title),
+					rejected: ytsAfterEnrich.filter((r) => r.rejected).length
+				},
+				'[SearchOrchestrator] YTS releases after enrichment'
+			);
 		}
 
 		// Pass 2: Enhanced deduplication using Radarr-style preference logic
@@ -452,11 +475,14 @@ export class SearchOrchestrator {
 		const { releases: smartDeduped } = this.deduplicator.deduplicateEnhanced(enrichResult.releases);
 		const afterEnrichmentCount = smartDeduped.length;
 
-		logger.debug('[SearchOrchestrator] After enhanced deduplication', {
-			beforeDedup: enrichResult.releases.length,
-			afterDedup: smartDeduped.length,
-			removed: enrichResult.releases.length - smartDeduped.length
-		});
+		logger.debug(
+			{
+				beforeDedup: enrichResult.releases.length,
+				afterDedup: smartDeduped.length,
+				removed: enrichResult.releases.length - smartDeduped.length
+			},
+			'[SearchOrchestrator] After enhanced deduplication'
+		);
 
 		// Apply limit (releases are already sorted by totalScore from enricher)
 		const limited = enrichedCriteria.limit
@@ -484,16 +510,19 @@ export class SearchOrchestrator {
 			scoringProfileId: enrichResult.scoringProfile?.id
 		};
 
-		logger.info('Enhanced search completed', {
-			totalResults: result.totalResults,
-			afterDedup: result.afterDedup,
-			afterFiltering: result.afterFiltering,
-			afterEnrichment: result.afterEnrichment,
-			returned: result.releases.length,
-			rejected: result.rejectedCount,
-			searchTimeMs: result.searchTimeMs,
-			enrichTimeMs: result.enrichTimeMs
-		});
+		logger.info(
+			{
+				totalResults: result.totalResults,
+				afterDedup: result.afterDedup,
+				afterFiltering: result.afterFiltering,
+				afterEnrichment: result.afterEnrichment,
+				returned: result.releases.length,
+				rejected: result.rejectedCount,
+				searchTimeMs: result.searchTimeMs,
+				enrichTimeMs: result.enrichTimeMs
+			},
+			'Enhanced search completed'
+		);
 
 		return result;
 	}
@@ -517,12 +546,15 @@ export class SearchOrchestrator {
 					reason: 'searchType',
 					message: `Cannot handle ${criteria.searchType} search (missing categories or search mode)`
 				});
-				logger.debug(`Indexer ${indexer.name} rejected: cannot handle search type`, {
-					indexerId: indexer.id,
-					searchType: criteria.searchType,
-					tvSearchMode: indexer.capabilities.tvSearch,
-					movieSearchMode: indexer.capabilities.movieSearch
-				});
+				logger.debug(
+					{
+						indexerId: indexer.id,
+						searchType: criteria.searchType,
+						tvSearchMode: indexer.capabilities.tvSearch,
+						movieSearchMode: indexer.capabilities.movieSearch
+					},
+					`Indexer ${indexer.name} rejected: cannot handle search type`
+				);
 				continue;
 			}
 
@@ -542,13 +574,13 @@ export class SearchOrchestrator {
 						message: `${options.searchSource} search is disabled for this indexer`
 					});
 					logger.debug(
-						`Indexer ${indexer.name} rejected: ${options.searchSource} search disabled`,
 						{
 							indexerId: indexer.id,
 							searchSource: options.searchSource,
 							enableInteractiveSearch: indexer.enableInteractiveSearch,
 							enableAutomaticSearch: indexer.enableAutomaticSearch
-						}
+						},
+						`Indexer ${indexer.name} rejected: ${options.searchSource} search disabled`
 					);
 					continue;
 				}
@@ -564,9 +596,12 @@ export class SearchOrchestrator {
 						reason: 'disabled',
 						message: 'Indexer is disabled'
 					});
-					logger.debug(`Indexer ${indexer.name} rejected: disabled by user`, {
-						indexerId: indexer.id
-					});
+					logger.debug(
+						{
+							indexerId: indexer.id
+						},
+						`Indexer ${indexer.name} rejected: disabled by user`
+					);
 					continue;
 				}
 			}
@@ -580,9 +615,12 @@ export class SearchOrchestrator {
 						reason: 'backoff',
 						message: 'Indexer auto-disabled due to repeated failures'
 					});
-					logger.debug(`Indexer ${indexer.name} rejected: in backoff period`, {
-						indexerId: indexer.id
-					});
+					logger.debug(
+						{
+							indexerId: indexer.id
+						},
+						`Indexer ${indexer.name} rejected: in backoff period`
+					);
 					continue;
 				}
 			}
@@ -611,10 +649,13 @@ export class SearchOrchestrator {
 					reason: 'indexerFilter',
 					message: 'Excluded by streamer profile indexer rule (Cinephage Library only)'
 				});
-				logger.debug(`Indexer ${indexer.name} rejected: streamer profile rule`, {
-					indexerId: indexer.id,
-					definitionId: indexer.definitionId
-				});
+				logger.debug(
+					{
+						indexerId: indexer.id,
+						definitionId: indexer.definitionId
+					},
+					`Indexer ${indexer.name} rejected: streamer profile rule`
+				);
 				continue;
 			}
 
@@ -627,18 +668,24 @@ export class SearchOrchestrator {
 						reason: 'protocol',
 						message: `Protocol '${indexer.protocol}' not in allowed protocols: ${options.protocolFilter.join(', ')}`
 					});
-					logger.debug(`Indexer ${indexer.name} rejected: protocol not allowed`, {
-						indexerId: indexer.id,
-						protocol: indexer.protocol,
-						allowedProtocols: options.protocolFilter
-					});
+					logger.debug(
+						{
+							indexerId: indexer.id,
+							protocol: indexer.protocol,
+							allowedProtocols: options.protocolFilter
+						},
+						`Indexer ${indexer.name} rejected: protocol not allowed`
+					);
 					continue;
 				}
 			}
 
-			logger.debug(`Indexer ${indexer.name} eligible for search`, {
-				indexerId: indexer.id
-			});
+			logger.debug(
+				{
+					indexerId: indexer.id
+				},
+				`Indexer ${indexer.name} eligible for search`
+			);
 			eligible.push(indexer);
 		}
 
@@ -653,20 +700,23 @@ export class SearchOrchestrator {
 				{} as Record<string, string[]>
 			);
 
-			logger.info('Indexer filtering complete', {
-				searchType: criteria.searchType,
-				searchSource: options.searchSource,
-				total: indexers.length,
-				eligible: eligible.length,
-				rejected: rejected.length,
-				rejectedBySearchType: rejectedByReason.searchType,
-				rejectedBySearchSource: rejectedByReason.searchSource,
-				rejectedByDisabled: rejectedByReason.disabled,
-				rejectedByBackoff: rejectedByReason.backoff,
-				rejectedByFilter: rejectedByReason.indexerFilter,
-				rejectedByProtocol: rejectedByReason.protocol,
-				eligibleIndexers: eligible.map((i) => i.name)
-			});
+			logger.info(
+				{
+					searchType: criteria.searchType,
+					searchSource: options.searchSource,
+					total: indexers.length,
+					eligible: eligible.length,
+					rejected: rejected.length,
+					rejectedBySearchType: rejectedByReason.searchType,
+					rejectedBySearchSource: rejectedByReason.searchSource,
+					rejectedByDisabled: rejectedByReason.disabled,
+					rejectedByBackoff: rejectedByReason.backoff,
+					rejectedByFilter: rejectedByReason.indexerFilter,
+					rejectedByProtocol: rejectedByReason.protocol,
+					eligibleIndexers: eligible.map((i) => i.name)
+				},
+				'Indexer filtering complete'
+			);
 		}
 
 		return { eligible, rejected };
@@ -681,11 +731,14 @@ export class SearchOrchestrator {
 	): Promise<ReleaseResult[]> {
 		const allReleases: ReleaseResult[] = [];
 
-		logger.info('[executeSearches] Starting', {
-			indexerCount: indexers.length,
-			criteria: { type: criteria.searchType, query: criteria.query },
-			concurrency: options.concurrency
-		});
+		logger.info(
+			{
+				indexerCount: indexers.length,
+				criteria: { type: criteria.searchType, query: criteria.query },
+				concurrency: options.concurrency
+			},
+			'[executeSearches] Starting'
+		);
 
 		// Process in batches for concurrency control
 		for (let i = 0; i < indexers.length; i += options.concurrency) {
@@ -698,20 +751,26 @@ export class SearchOrchestrator {
 			);
 
 			for (const result of batchResults) {
-				logger.info('[executeSearches] Indexer result', {
-					indexer: result.indexerName,
-					resultCount: result.results.length,
-					timeMs: result.searchTimeMs,
-					error: result.error
-				});
+				logger.info(
+					{
+						indexer: result.indexerName,
+						resultCount: result.results.length,
+						timeMs: result.searchTimeMs,
+						error: result.error
+					},
+					'[executeSearches] Indexer result'
+				);
 				results.push(result);
 				allReleases.push(...result.results);
 			}
 		}
 
-		logger.info('[executeSearches] Completed', {
-			totalReleases: allReleases.length
-		});
+		logger.info(
+			{
+				totalReleases: allReleases.length
+			},
+			'[executeSearches] Completed'
+		);
 
 		return allReleases;
 	}
@@ -732,11 +791,14 @@ export class SearchOrchestrator {
 
 			if (!hostCheck.canProceed) {
 				const waitTime = hostCheck.waitTimeMs;
-				logger.debug('Rate limited', {
-					indexer: indexer.name,
-					reason: hostCheck.reason,
-					waitTimeMs: waitTime
-				});
+				logger.debug(
+					{
+						indexer: indexer.name,
+						reason: hostCheck.reason,
+						waitTimeMs: waitTime
+					},
+					'Rate limited'
+				);
 
 				// Wait or skip based on wait time
 				if (waitTime > timeout) {
@@ -787,11 +849,14 @@ export class SearchOrchestrator {
 
 			// Handle Cloudflare protection specifically
 			if (error instanceof CloudflareProtectedError) {
-				logger.warn('Cloudflare protection detected', {
-					indexer: indexer.name,
-					host: error.host,
-					statusCode: error.statusCode
-				});
+				logger.warn(
+					{
+						indexer: indexer.name,
+						host: error.host,
+						statusCode: error.statusCode
+					},
+					'Cloudflare protection detected'
+				);
 
 				// Record failure with Cloudflare-specific message
 				await this.statusTracker.recordFailure(
@@ -808,10 +873,13 @@ export class SearchOrchestrator {
 				};
 			}
 
-			logger.warn('Indexer search failed', {
-				indexer: indexer.name,
-				error: message
-			});
+			logger.warn(
+				{
+					indexer: indexer.name,
+					error: message
+				},
+				'Indexer search failed'
+			);
 
 			// Record failure
 			await this.statusTracker.recordFailure(indexer.id, message);
@@ -854,11 +922,14 @@ export class SearchOrchestrator {
 				};
 				const movieIdOnlyReleases = await indexer.search(movieIdOnlyCriteria);
 				if (movieIdOnlyReleases.length > 0) {
-					logger.debug('Movie ID retry without q/year returned results', {
-						indexer: indexer.name,
-						imdbId: criteria.imdbId,
-						tmdbId: criteria.tmdbId
-					});
+					logger.debug(
+						{
+							indexer: indexer.name,
+							imdbId: criteria.imdbId,
+							tmdbId: criteria.tmdbId
+						},
+						'Movie ID retry without q/year returned results'
+					);
 					idReleases = movieIdOnlyReleases;
 				}
 			}
@@ -882,12 +953,15 @@ export class SearchOrchestrator {
 								merged.push(release);
 							}
 						}
-						logger.debug('Supplemented movie ID results with text fallback', {
-							indexer: indexer.name,
-							idResults: idReleases.length,
-							textResults: textReleases.length,
-							mergedResults: merged.length
-						});
+						logger.debug(
+							{
+								indexer: indexer.name,
+								idResults: idReleases.length,
+								textResults: textReleases.length,
+								mergedResults: merged.length
+							},
+							'Supplemented movie ID results with text fallback'
+						);
 						return { releases: merged, searchMethod: 'text' };
 					}
 				}
@@ -898,12 +972,15 @@ export class SearchOrchestrator {
 				return { releases: [], searchMethod: 'id' };
 			}
 
-			logger.debug('ID search returned no results, falling back to text search', {
-				indexer: indexer.name,
-				searchType: criteria.searchType,
-				query: criteria.query,
-				hasSearchTitles: !!criteria.searchTitles?.length
-			});
+			logger.debug(
+				{
+					indexer: indexer.name,
+					searchType: criteria.searchType,
+					query: criteria.query,
+					hasSearchTitles: !!criteria.searchTitles?.length
+				},
+				'ID search returned no results, falling back to text search'
+			);
 
 			const fallbackReleases = await this.executeMultiTitleTextSearch(indexer, criteria);
 			return { releases: fallbackReleases, searchMethod: 'text' };
@@ -920,9 +997,12 @@ export class SearchOrchestrator {
 
 		// No results from any title variant
 		if (!criteria.query && (!criteria.searchTitles || criteria.searchTitles.length === 0)) {
-			logger.debug('Skipping indexer: no supported IDs and no query text', {
-				indexer: indexer.name
-			});
+			logger.debug(
+				{
+					indexer: indexer.name
+				},
+				'Skipping indexer: no supported IDs and no query text'
+			);
 		}
 		return { releases: [], searchMethod: 'text' };
 	}
@@ -1003,12 +1083,15 @@ export class SearchOrchestrator {
 					} catch (error) {
 						const message = error instanceof Error ? error.message : String(error);
 						variantErrors.push(message);
-						logger.debug('Multi-title search variant failed', {
-							indexer: indexer.name,
-							title,
-							format: format.type,
-							error: message
-						});
+						logger.debug(
+							{
+								indexer: indexer.name,
+								title,
+								format: format.type,
+								error: message
+							},
+							'Multi-title search variant failed'
+						);
 					}
 				}
 			} else if (isMovieSearch(criteria)) {
@@ -1056,13 +1139,16 @@ export class SearchOrchestrator {
 					} catch (error) {
 						const message = error instanceof Error ? error.message : String(error);
 						variantErrors.push(message);
-						logger.debug('Multi-title search variant failed', {
-							indexer: indexer.name,
-							title: movieQuery,
-							year: movieYear,
-							format,
-							error: message
-						});
+						logger.debug(
+							{
+								indexer: indexer.name,
+								title: movieQuery,
+								year: movieYear,
+								format,
+								error: message
+							},
+							'Multi-title search variant failed'
+						);
 					}
 				}
 			} else {
@@ -1087,11 +1173,14 @@ export class SearchOrchestrator {
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
 					variantErrors.push(message);
-					logger.debug('Multi-title search variant failed', {
-						indexer: indexer.name,
-						title,
-						error: message
-					});
+					logger.debug(
+						{
+							indexer: indexer.name,
+							title,
+							error: message
+						},
+						'Multi-title search variant failed'
+					);
 				}
 			}
 		}
@@ -1103,12 +1192,15 @@ export class SearchOrchestrator {
 		}
 
 		if (allReleases.length > 0) {
-			logger.debug('Multi-title search completed', {
-				indexer: indexer.name,
-				titlesSearched: Math.min(titlesToSearch.length, 3),
-				formatsUsed: episodeFormats.length || 1,
-				totalResults: allReleases.length
-			});
+			logger.debug(
+				{
+					indexer: indexer.name,
+					titlesSearched: Math.min(titlesToSearch.length, 3),
+					formatsUsed: episodeFormats.length || 1,
+					totalResults: allReleases.length
+				},
+				'Multi-title search completed'
+			);
 		}
 
 		return allReleases;
@@ -1219,10 +1311,13 @@ export class SearchOrchestrator {
 
 				// Reject if release has episode info (S01E03, season pack, etc.)
 				if (parsed.episode) {
-					logger.debug('[SearchOrchestrator] Rejecting TV release for movie search', {
-						title: release.title,
-						episode: parsed.episode
-					});
+					logger.debug(
+						{
+							title: release.title,
+							episode: parsed.episode
+						},
+						'[SearchOrchestrator] Rejecting TV release for movie search'
+					);
 					return false;
 				}
 				return true;
@@ -1329,12 +1424,15 @@ export class SearchOrchestrator {
 
 			if (!hasMatchingCategory) {
 				const actualContentType = getCategoryContentType(release.categories[0]);
-				logger.debug('[SearchOrchestrator] Rejecting release due to category mismatch', {
-					title: release.title,
-					categories: release.categories,
-					expectedSearchType: searchType,
-					actualContentType
-				});
+				logger.debug(
+					{
+						title: release.title,
+						categories: release.categories,
+						expectedSearchType: searchType,
+						actualContentType
+					},
+					'[SearchOrchestrator] Rejecting release due to category mismatch'
+				);
 			}
 
 			return hasMatchingCategory;
@@ -1394,23 +1492,29 @@ export class SearchOrchestrator {
 			});
 
 			if (!matches) {
-				logger.debug('[SearchOrchestrator] Rejecting release due to title mismatch', {
-					releaseTitle: release.title,
-					parsedName: extractReleaseName(release.title),
-					expectedTitles: expectedTitles.slice(0, 3)
-				});
+				logger.debug(
+					{
+						releaseTitle: release.title,
+						parsedName: extractReleaseName(release.title),
+						expectedTitles: expectedTitles.slice(0, 3)
+					},
+					'[SearchOrchestrator] Rejecting release due to title mismatch'
+				);
 			}
 
 			return matches;
 		});
 
 		if (filtered.length < beforeCount) {
-			logger.info('[SearchOrchestrator] Title relevance filter removed irrelevant results', {
-				before: beforeCount,
-				after: filtered.length,
-				removed: beforeCount - filtered.length,
-				expectedTitles: expectedTitles.slice(0, 3)
-			});
+			logger.info(
+				{
+					before: beforeCount,
+					after: filtered.length,
+					removed: beforeCount - filtered.length,
+					expectedTitles: expectedTitles.slice(0, 3)
+				},
+				'[SearchOrchestrator] Title relevance filter removed irrelevant results'
+			);
 		}
 
 		return filtered;
@@ -1511,12 +1615,15 @@ export class SearchOrchestrator {
 			// TMDB ID check
 			if (searchTmdbId && release.tmdbId) {
 				if (release.tmdbId !== searchTmdbId) {
-					logger.debug('[SearchOrchestrator] ID mismatch - removing release', {
-						releaseTitle: release.title,
-						releaseTmdbId: release.tmdbId,
-						criteriaTmdbId: searchTmdbId,
-						indexer: release.indexerName
-					});
+					logger.debug(
+						{
+							releaseTitle: release.title,
+							releaseTmdbId: release.tmdbId,
+							criteriaTmdbId: searchTmdbId,
+							indexer: release.indexerName
+						},
+						'[SearchOrchestrator] ID mismatch - removing release'
+					);
 					return false; // Hard reject
 				}
 				// IDs match - accept immediately
@@ -1526,12 +1633,15 @@ export class SearchOrchestrator {
 			// IMDB ID check
 			if (searchImdbId && release.imdbId) {
 				if (release.imdbId !== searchImdbId) {
-					logger.debug('[SearchOrchestrator] ID mismatch - removing release', {
-						releaseTitle: release.title,
-						releaseImdbId: release.imdbId,
-						criteriaImdbId: searchImdbId,
-						indexer: release.indexerName
-					});
+					logger.debug(
+						{
+							releaseTitle: release.title,
+							releaseImdbId: release.imdbId,
+							criteriaImdbId: searchImdbId,
+							indexer: release.indexerName
+						},
+						'[SearchOrchestrator] ID mismatch - removing release'
+					);
 					return false; // Hard reject
 				}
 				// IDs match - accept immediately
@@ -1541,12 +1651,15 @@ export class SearchOrchestrator {
 			// TVDB ID check (TV only)
 			if (searchTvdbId && release.tvdbId) {
 				if (release.tvdbId !== searchTvdbId) {
-					logger.debug('[SearchOrchestrator] TVDB ID mismatch - removing release', {
-						releaseTitle: release.title,
-						releaseTvdbId: release.tvdbId,
-						criteriaTvdbId: searchTvdbId,
-						indexer: release.indexerName
-					});
+					logger.debug(
+						{
+							releaseTitle: release.title,
+							releaseTvdbId: release.tvdbId,
+							criteriaTvdbId: searchTvdbId,
+							indexer: release.indexerName
+						},
+						'[SearchOrchestrator] TVDB ID mismatch - removing release'
+					);
 					return false; // Hard reject
 				}
 				// IDs match - accept immediately
@@ -1558,12 +1671,15 @@ export class SearchOrchestrator {
 			if (isMovieSearch(criteria) && searchYear) {
 				const parsedRelease = getParsed();
 				if (parsedRelease.year && Math.abs(parsedRelease.year - searchYear) > 1) {
-					logger.debug('[SearchOrchestrator] Year mismatch - removing movie release', {
-						releaseTitle: release.title,
-						releaseYear: parsedRelease.year,
-						criteriaYear: searchYear,
-						indexer: release.indexerName
-					});
+					logger.debug(
+						{
+							releaseTitle: release.title,
+							releaseYear: parsedRelease.year,
+							criteriaYear: searchYear,
+							indexer: release.indexerName
+						},
+						'[SearchOrchestrator] Year mismatch - removing movie release'
+					);
 					return false;
 				}
 			}
@@ -1585,14 +1701,17 @@ export class SearchOrchestrator {
 				const yearMatch = parsedRelease.year && Math.abs(parsedRelease.year - searchYear!) <= 1;
 
 				if (!titleMatch || !yearMatch) {
-					logger.debug('[SearchOrchestrator] Title/Year mismatch - removing release', {
-						releaseTitle: release.title,
-						parsedTitle: parsedRelease.cleanTitle,
-						parsedYear: parsedRelease.year,
-						criteriaYear: searchYear,
-						titleMatch,
-						yearMatch
-					});
+					logger.debug(
+						{
+							releaseTitle: release.title,
+							parsedTitle: parsedRelease.cleanTitle,
+							parsedYear: parsedRelease.year,
+							criteriaYear: searchYear,
+							titleMatch,
+							yearMatch
+						},
+						'[SearchOrchestrator] Title/Year mismatch - removing release'
+					);
 					return false; // Hard reject
 				}
 
@@ -1606,15 +1725,18 @@ export class SearchOrchestrator {
 		});
 
 		if (filtered.length < beforeCount) {
-			logger.info('[SearchOrchestrator] ID/Title filter removed mismatched releases', {
-				before: beforeCount,
-				after: filtered.length,
-				removed: beforeCount - filtered.length,
-				criteriaTmdbId: searchTmdbId,
-				criteriaImdbId: searchImdbId,
-				hadSearchTitles: hasSearchTitles,
-				criteriaYear: searchYear
-			});
+			logger.info(
+				{
+					before: beforeCount,
+					after: filtered.length,
+					removed: beforeCount - filtered.length,
+					criteriaTmdbId: searchTmdbId,
+					criteriaImdbId: searchImdbId,
+					hadSearchTitles: hasSearchTitles,
+					criteriaYear: searchYear
+				},
+				'[SearchOrchestrator] ID/Title filter removed mismatched releases'
+			);
 		}
 
 		return filtered;
@@ -1671,10 +1793,13 @@ export class SearchOrchestrator {
 			this.tvEpisodeCountsCache.set(tmdbId, counts);
 			return counts;
 		} catch (error) {
-			logger.warn('Failed to fetch TV episode counts from TMDB', {
-				tmdbId,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					tmdbId,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to fetch TV episode counts from TMDB'
+			);
 			return undefined;
 		}
 	}
@@ -1718,21 +1843,27 @@ export class SearchOrchestrator {
 			if (episodeCount && episodeCount > 0) {
 				// Cache the result
 				this.seasonEpisodeCountCache.set(cacheKey, episodeCount);
-				logger.debug('Fetched season episode count from TMDB', {
-					tmdbId,
-					season: criteria.season,
-					episodeCount
-				});
+				logger.debug(
+					{
+						tmdbId,
+						season: criteria.season,
+						episodeCount
+					},
+					'Fetched season episode count from TMDB'
+				);
 				return episodeCount;
 			}
 		} catch (error) {
 			// Log but don't fail - search can proceed without episode count
 			// Size validation will be skipped for season packs
-			logger.warn('Failed to fetch season episode count from TMDB', {
-				tmdbId,
-				season: criteria.season,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					tmdbId,
+					season: criteria.season,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to fetch season episode count from TMDB'
+			);
 		}
 
 		return undefined;
@@ -1775,19 +1906,25 @@ export class SearchOrchestrator {
 					enriched = { ...enriched, tvdbId: externalIds.tvdb_id } as typeof enriched;
 				}
 
-				logger.debug('Enriched search criteria with external IDs', {
-					tmdbId: criteria.tmdbId,
-					imdbId: 'imdbId' in enriched ? (enriched.imdbId as string) : null,
-					tvdbId: 'tvdbId' in enriched ? (enriched.tvdbId as number) : null
-				});
+				logger.debug(
+					{
+						tmdbId: criteria.tmdbId,
+						imdbId: 'imdbId' in enriched ? (enriched.imdbId as string) : null,
+						tvdbId: 'tvdbId' in enriched ? (enriched.tvdbId as number) : null
+					},
+					'Enriched search criteria with external IDs'
+				);
 
 				return enriched as SearchCriteria;
 			} catch (error) {
 				// Log but don't fail - search can still proceed without external IDs
-				logger.warn('Failed to look up external IDs from TMDB', {
-					tmdbId: criteria.tmdbId,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						tmdbId: criteria.tmdbId,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to look up external IDs from TMDB'
+				);
 			}
 		}
 

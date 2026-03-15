@@ -8,6 +8,7 @@
 	import { ProfileList, ProfileModal } from '$lib/components/profiles';
 	import { FormatList, CustomFormatModal } from '$lib/components/formats';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import { Sliders, Layers } from 'lucide-svelte';
 
 	let { data }: { data: PageData } = $props();
@@ -105,7 +106,7 @@
 
 			await invalidateAll();
 		} catch (e) {
-			console.error('Delete failed:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to delete profile');
 		} finally {
 			profileDeleteConfirmOpen = false;
 			profileDeleteTarget = null;
@@ -130,7 +131,7 @@
 
 			await invalidateAll();
 		} catch (e) {
-			console.error('Set default failed:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to set default profile');
 		}
 	}
 
@@ -225,7 +226,7 @@
 
 			await invalidateAll();
 		} catch (e) {
-			console.error('Delete failed:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to delete format');
 		} finally {
 			formatDeleteConfirmOpen = false;
 			formatDeleteTarget = null;

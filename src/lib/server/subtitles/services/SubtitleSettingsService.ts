@@ -14,7 +14,9 @@
 import { db } from '$lib/server/db';
 import { subtitleSettings } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 
 /** All available subtitle settings (non-scheduler related) */
 export interface SubtitleSettingsData {
@@ -97,7 +99,7 @@ export class SubtitleSettingsService {
 		// Update cache
 		this.cache[key] = value;
 
-		logger.debug('Subtitle setting updated', { key, value });
+		logger.debug({ key, value }, 'Subtitle setting updated');
 	}
 
 	/**

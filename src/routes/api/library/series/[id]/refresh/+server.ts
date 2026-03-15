@@ -222,9 +222,12 @@ export const POST: RequestHandler = async ({ params, request }) => {
 							// Small delay to avoid rate limiting
 							await new Promise((resolve) => setTimeout(resolve, 100));
 						} catch {
-							logger.warn('[RefreshSeries] Failed to fetch season', {
-								seasonNumber: tmdbSeasonInfo.season_number
-							});
+							logger.warn(
+								{
+									seasonNumber: tmdbSeasonInfo.season_number
+								},
+								'[RefreshSeries] Failed to fetch season'
+							);
 						}
 					}
 				}

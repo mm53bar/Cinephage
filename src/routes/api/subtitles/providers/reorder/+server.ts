@@ -62,19 +62,25 @@ export const POST: RequestHandler = async ({ request }) => {
 			await providerManager.updateProvider(update.id, { priority: update.priority });
 		}
 
-		logger.info('[ProviderReorder] Reordered provider priorities', {
-			count: updates.length,
-			order: providerIds
-		});
+		logger.info(
+			{
+				count: updates.length,
+				order: providerIds
+			},
+			'[ProviderReorder] Reordered provider priorities'
+		);
 
 		return json({
 			success: true,
 			updated: updates.length
 		});
 	} catch (error) {
-		logger.error('[ProviderReorder] Failed to reorder providers', {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'[ProviderReorder] Failed to reorder providers'
+		);
 
 		return json(
 			{

@@ -17,7 +17,9 @@ import { qualityFilter } from '$lib/server/quality/index.js';
 import { searchOnAdd } from './searchOnAdd.js';
 import { SearchWorker, workerManager } from '$lib/server/workers/index.js';
 import { ValidationError, NotFoundError, ExternalServiceError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 
 export type MediaType = 'movie' | 'tv';
 
@@ -98,9 +100,12 @@ export async function getLanguageProfileId(
 		.limit(1);
 
 	if (!defaultLanguageProfile) {
-		logger.warn('[LibraryAddService] No default language profile found for subtitle preferences', {
-			tmdbId
-		});
+		logger.warn(
+			{
+				tmdbId
+			},
+			'[LibraryAddService] No default language profile found for subtitle preferences'
+		);
 		return null;
 	}
 
@@ -118,7 +123,7 @@ export async function fetchMovieExternalIds(tmdbId: number): Promise<ExternalIds
 			tvdbId: null
 		};
 	} catch {
-		logger.warn('[LibraryAddService] Failed to fetch external IDs for movie', { tmdbId });
+		logger.warn({ tmdbId }, '[LibraryAddService] Failed to fetch external IDs for movie');
 		return { imdbId: null, tvdbId: null };
 	}
 }
@@ -134,7 +139,7 @@ export async function fetchSeriesExternalIds(tmdbId: number): Promise<ExternalId
 			tvdbId: externalIds.tvdb_id
 		};
 	} catch {
-		logger.warn('[LibraryAddService] Failed to fetch external IDs for series', { tmdbId });
+		logger.warn({ tmdbId }, '[LibraryAddService] Failed to fetch external IDs for series');
 		return { imdbId: null, tvdbId: null };
 	}
 }
@@ -207,10 +212,13 @@ export async function triggerMovieSearch(params: {
 		return { triggered: true };
 	} catch (error) {
 		// Concurrency limit reached - fall back to fire and forget
-		logger.warn('[LibraryAddService] Could not create search worker, running directly', {
-			movieId,
-			error: error instanceof Error ? error.message : 'Unknown error'
-		});
+		logger.warn(
+			{
+				movieId,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			},
+			'[LibraryAddService] Could not create search worker, running directly'
+		);
 
 		searchOnAdd
 			.searchForMovie({
@@ -222,10 +230,13 @@ export async function triggerMovieSearch(params: {
 				scoringProfileId
 			})
 			.catch((err) => {
-				logger.warn('[LibraryAddService] Background search failed for movie', {
-					movieId,
-					error: err instanceof Error ? err.message : 'Unknown error'
-				});
+				logger.warn(
+					{
+						movieId,
+						error: err instanceof Error ? err.message : 'Unknown error'
+					},
+					'[LibraryAddService] Background search failed for movie'
+				);
 			});
 
 		return { triggered: true };
@@ -262,16 +273,22 @@ export async function triggerSeriesSearch(params: {
 		return { triggered: true };
 	} catch (error) {
 		// Concurrency limit reached - fall back to fire and forget
-		logger.warn('[LibraryAddService] Could not create search worker, running directly', {
-			seriesId,
-			error: error instanceof Error ? error.message : 'Unknown error'
-		});
+		logger.warn(
+			{
+				seriesId,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			},
+			'[LibraryAddService] Could not create search worker, running directly'
+		);
 
 		searchOnAdd.searchForMissingEpisodes(seriesId).catch((err) => {
-			logger.warn('[LibraryAddService] Background search failed for series', {
-				seriesId,
-				error: err instanceof Error ? err.message : 'Unknown error'
-			});
+			logger.warn(
+				{
+					seriesId,
+					error: err instanceof Error ? err.message : 'Unknown error'
+				},
+				'[LibraryAddService] Background search failed for series'
+			);
 		});
 
 		return { triggered: true };

@@ -17,7 +17,7 @@ import { filterStreamsByLanguage } from './language-utils';
 import type { StreamSource, StreamSubtitle, StreamType } from './types';
 import { fetchAndRewritePlaylist } from './utils';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /** Parameters for stream resolution */
 export interface ResolveParams {
@@ -149,12 +149,15 @@ async function tryStreamSources(
 
 					// Log subtitle availability
 					if (outcome.source.subtitles?.length) {
-						logger.info('Stream has subtitles', {
-							provider: outcome.source.provider,
-							subtitleCount: outcome.source.subtitles.length,
-							languages: outcome.source.subtitles.map((s) => s.language),
-							...streamLog
-						});
+						logger.info(
+							{
+								provider: outcome.source.provider,
+								subtitleCount: outcome.source.subtitles.length,
+								languages: outcome.source.subtitles.map((s) => s.language),
+								...streamLog
+							},
+							'Stream has subtitles'
+						);
 					}
 
 					// Cache the successful stream
@@ -207,7 +210,7 @@ export async function resolveStream(params: ResolveParams): Promise<Response> {
 	if (cachedJson) {
 		try {
 			const cached = JSON.parse(cachedJson) as CachedStream;
-			logger.debug('Cache hit for stream', { cacheKey, ...streamLog });
+			logger.debug({ cacheKey, ...streamLog }, 'Cache hit for stream');
 
 			if (cached.type === 'mp4') {
 				return createDirectStreamResponse(cached.rawUrl, baseUrl, cached.referer);
@@ -247,45 +250,57 @@ export async function resolveStream(params: ResolveParams): Promise<Response> {
 	// Filter streams by language preference
 	const { matching, fallback } = filterStreamsByLanguage(result.sources, preferredLanguages);
 
-	logger.debug('Stream sources by language', {
-		tmdbId,
-		type,
-		preferredLanguages,
-		matchingCount: matching.length,
-		fallbackCount: fallback.length,
-		...streamLog
-	});
+	logger.debug(
+		{
+			tmdbId,
+			type,
+			preferredLanguages,
+			matchingCount: matching.length,
+			fallbackCount: fallback.length,
+			...streamLog
+		},
+		'Stream sources by language'
+	);
 
 	// Try matching language streams first
 	const matchingResult = await tryStreamSources(matching, baseUrl, cacheKey, apiKey);
 	if (matchingResult) {
-		logger.info('Using stream source', {
-			provider: matchingResult.source.provider,
-			server: matchingResult.source.server,
-			language: matchingResult.source.language,
-			quality: matchingResult.source.quality,
-			hasSubtitles: (matchingResult.source.subtitles?.length ?? 0) > 0,
-			...streamLog
-		});
+		logger.info(
+			{
+				provider: matchingResult.source.provider,
+				server: matchingResult.source.server,
+				language: matchingResult.source.language,
+				quality: matchingResult.source.quality,
+				hasSubtitles: (matchingResult.source.subtitles?.length ?? 0) > 0,
+				...streamLog
+			},
+			'Using stream source'
+		);
 		return matchingResult.response;
 	}
 
 	// Try fallback streams if matching failed
 	if (fallback.length > 0) {
-		logger.warn('No matching language streams worked, trying fallback', {
-			tmdbId,
-			preferredLanguages,
-			triedMatching: matching.length,
-			...streamLog
-		});
+		logger.warn(
+			{
+				tmdbId,
+				preferredLanguages,
+				triedMatching: matching.length,
+				...streamLog
+			},
+			'No matching language streams worked, trying fallback'
+		);
 
 		const fallbackResult = await tryStreamSources(fallback, baseUrl, cacheKey, apiKey);
 		if (fallbackResult) {
-			logger.info('Using fallback language stream', {
-				provider: fallbackResult.source.provider,
-				language: fallbackResult.source.language,
-				...streamLog
-			});
+			logger.info(
+				{
+					provider: fallbackResult.source.provider,
+					language: fallbackResult.source.language,
+					...streamLog
+				},
+				'Using fallback language stream'
+			);
 			return fallbackResult.response;
 		}
 	}

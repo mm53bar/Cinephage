@@ -8,6 +8,7 @@ import {
 	type NamingPreset
 } from '$lib/server/library/naming/presets';
 import { eq } from 'drizzle-orm';
+import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
@@ -41,7 +42,7 @@ export const GET: RequestHandler = async ({ params }) => {
 			}
 		});
 	} catch (err) {
-		console.error('Error fetching naming preset:', err);
+		logger.error({ err, component: 'NamingPresetByIdApi' }, 'Error fetching naming preset');
 		return json({ error: 'Failed to fetch preset' }, { status: 500 });
 	}
 };
@@ -124,7 +125,7 @@ export const PUT: RequestHandler = async (event) => {
 			}
 		});
 	} catch (err) {
-		console.error('Error updating naming preset:', err);
+		logger.error({ err, component: 'NamingPresetByIdApi' }, 'Error updating naming preset');
 		return json({ error: 'Failed to update preset' }, { status: 500 });
 	}
 };
@@ -156,7 +157,7 @@ export const DELETE: RequestHandler = async (event) => {
 
 		return json({ success: true });
 	} catch (err) {
-		console.error('Error deleting naming preset:', err);
+		logger.error({ err, component: 'NamingPresetByIdApi' }, 'Error deleting naming preset');
 		return json({ error: 'Failed to delete preset' }, { status: 500 });
 	}
 };

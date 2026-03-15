@@ -9,8 +9,10 @@
  */
 
 import { Readable, type ReadableOptions } from 'node:stream';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { NntpManager } from './NntpManager';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 import { SegmentStore } from './SegmentStore';
 import { AdaptivePrefetcher } from './AdaptivePrefetcher';
 import type { ByteRange, NzbFile } from './types';
@@ -81,12 +83,15 @@ export class UsenetSeekableStream extends Readable {
 		// Initialize state based on range
 		this.state = this.initializeState();
 
-		logger.debug('[UsenetSeekableStream] Created', {
-			file: this.file.name,
-			totalSize: this.store.totalSize,
-			segments: this.file.segments.length,
-			range: this.range
-		});
+		logger.debug(
+			{
+				file: this.file.name,
+				totalSize: this.store.totalSize,
+				segments: this.file.segments.length,
+				range: this.range
+			},
+			'[UsenetSeekableStream] Created'
+		);
 	}
 
 	/**
@@ -274,11 +279,14 @@ export class UsenetSeekableStream extends Readable {
 				}
 			}
 		} catch (error) {
-			logger.error('[UsenetSeekableStream] Stream error', {
-				file: this.file.name,
-				segment: this.state.currentSegmentIndex,
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					file: this.file.name,
+					segment: this.state.currentSegmentIndex,
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'[UsenetSeekableStream] Stream error'
+			);
 			throw error;
 		} finally {
 			this.reading = false;
@@ -302,11 +310,14 @@ export class UsenetSeekableStream extends Readable {
 		this.store.clearCache();
 		this.currentSegmentData = null;
 
-		logger.debug('[UsenetSeekableStream] Stream destroyed', {
-			file: this.file.name,
-			bytesStreamed: this.state.bytesStreamed,
-			error: error?.message
-		});
+		logger.debug(
+			{
+				file: this.file.name,
+				bytesStreamed: this.state.bytesStreamed,
+				error: error?.message
+			},
+			'[UsenetSeekableStream] Stream destroyed'
+		);
 
 		callback(error);
 	}

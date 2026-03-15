@@ -18,7 +18,9 @@ import {
 	createDefaultStatus
 } from './types';
 import { BackoffCalculator } from './BackoffCalculator';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 /** Database row type */
 type IndexerStatusRow = typeof indexerStatus.$inferSelect;
@@ -63,15 +65,15 @@ export class PersistentStatusTracker {
 				this.cache.set(row.indexerId, this.rowToStatus(row));
 			}
 
-			logger.info('Loaded indexer status from database', { count: rows.length });
+			logger.info({ count: rows.length }, 'Loaded indexer status from database');
 		} catch (error) {
-			logger.warn('Failed to load indexer status from database, starting fresh', { error });
+			logger.warn({ err: error }, 'Failed to load indexer status from database, starting fresh');
 		}
 
 		// Start periodic persist
 		this.persistInterval = setInterval(() => {
 			this.persistDirty().catch((err) => {
-				logger.error('Failed to persist indexer status', err);
+				logger.error({ err }, 'Failed to persist indexer status');
 			});
 		}, PERSIST_INTERVAL_MS);
 
@@ -79,7 +81,7 @@ export class PersistentStatusTracker {
 
 		// Cleanup orphaned status entries in the background
 		this.cleanupOrphanedEntries().catch((err) => {
-			logger.debug('Failed to cleanup orphaned status entries', { error: err });
+			logger.debug({ err }, 'Failed to cleanup orphaned status entries');
 		});
 	}
 
@@ -103,10 +105,13 @@ export class PersistentStatusTracker {
 
 			if (orphanedIds.length === 0) return;
 
-			logger.info('Cleaning up orphaned indexer status entries', {
-				count: orphanedIds.length,
-				ids: orphanedIds
-			});
+			logger.info(
+				{
+					count: orphanedIds.length,
+					ids: orphanedIds
+				},
+				'Cleaning up orphaned indexer status entries'
+			);
 
 			// Remove from cache
 			for (const id of orphanedIds) {
@@ -122,7 +127,7 @@ export class PersistentStatusTracker {
 				// Ignore errors - entries may already be gone
 			}
 		} catch (error) {
-			logger.debug('Error during orphaned status cleanup', { error });
+			logger.debug({ err: error }, 'Error during orphaned status cleanup');
 		}
 	}
 
@@ -174,7 +179,7 @@ export class PersistentStatusTracker {
 				return status;
 			}
 		} catch (error) {
-			logger.debug('Failed to load status from database', { indexerId, error });
+			logger.debug({ indexerId, err: error }, 'Failed to load status from database');
 		}
 
 		// Create default
@@ -213,7 +218,7 @@ export class PersistentStatusTracker {
 			status.isDisabled = false;
 			status.disabledAt = undefined;
 			status.disabledUntil = undefined;
-			logger.info('Indexer re-enabled after success', { indexerId });
+			logger.info({ indexerId }, 'Indexer re-enabled after success');
 		}
 
 		// Recover gradually instead of instantly flipping healthy after one success.
@@ -318,7 +323,7 @@ export class PersistentStatusTracker {
 			status.consecutiveFailures = Math.max(2, Math.floor(status.consecutiveFailures / 2));
 			status.health = this.calculateHealth(status);
 			this.markDirty(indexerId);
-			logger.info('Indexer backoff period expired, re-enabling for retry', { indexerId });
+			logger.info({ indexerId }, 'Indexer backoff period expired, re-enabling for retry');
 			return true;
 		}
 
@@ -362,7 +367,7 @@ export class PersistentStatusTracker {
 			await db.delete(indexerStatus);
 			logger.info('Cleared all indexer status from database');
 		} catch (error) {
-			logger.error('Failed to clear indexer status from database', error);
+			logger.error({ err: error }, 'Failed to clear indexer status from database');
 		}
 	}
 
@@ -377,7 +382,7 @@ export class PersistentStatusTracker {
 		try {
 			await db.delete(indexerStatus).where(eq(indexerStatus.indexerId, indexerId));
 		} catch (error) {
-			logger.debug('Failed to remove indexer status from database', { indexerId, error });
+			logger.debug({ indexerId, err: error }, 'Failed to remove indexer status from database');
 		}
 	}
 
@@ -458,14 +463,17 @@ export class PersistentStatusTracker {
 
 				if (isForeignKeyError) {
 					// Indexer no longer exists in the database - remove from cache
-					logger.debug('Removing orphaned indexer status (indexer no longer exists)', {
-						indexerId
-					});
+					logger.debug(
+						{
+							indexerId
+						},
+						'Removing orphaned indexer status (indexer no longer exists)'
+					);
 					this.cache.delete(indexerId);
 					this.responseTimes.delete(indexerId);
 					// Don't re-add to dirty - just let it go
 				} else {
-					logger.debug('Failed to persist indexer status', { indexerId, error });
+					logger.debug({ indexerId, err: error }, 'Failed to persist indexer status');
 					// Re-add to dirty set to try again for transient errors
 					this.dirty.add(indexerId);
 				}
@@ -481,12 +489,15 @@ export class PersistentStatusTracker {
 		status.disabledUntil = new Date(Date.now() + backoffMs);
 		status.health = 'disabled';
 
-		logger.warn('Indexer auto-disabled due to failures', {
-			indexerId: status.indexerId,
-			consecutiveFailures: status.consecutiveFailures,
-			backoffMs,
-			disabledUntil: status.disabledUntil.toISOString()
-		});
+		logger.warn(
+			{
+				indexerId: status.indexerId,
+				consecutiveFailures: status.consecutiveFailures,
+				backoffMs,
+				disabledUntil: status.disabledUntil.toISOString()
+			},
+			'Indexer auto-disabled due to failures'
+		);
 	}
 
 	private calculateHealth(status: IndexerStatus): HealthStatus {
@@ -583,9 +594,12 @@ export function getPersistentStatusTracker(config?: StatusTrackerConfig): Persis
 export function resetPersistentStatusTracker(): void {
 	if (persistentTrackerInstance) {
 		persistentTrackerInstance.shutdown().catch((error) => {
-			logger.warn('Error during status tracker shutdown', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					err: error
+				},
+				'Error during status tracker shutdown'
+			);
 		});
 	}
 	persistentTrackerInstance = null;

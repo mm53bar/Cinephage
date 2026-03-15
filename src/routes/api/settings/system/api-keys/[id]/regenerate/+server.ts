@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { logger } from '$lib/logging';
 import { regenerateRecoverableApiKey } from '$lib/server/auth/index.js';
 
 // POST /api/settings/system/api-keys/[id]/regenerate - Regenerate an API key
@@ -35,7 +36,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			}
 		});
 	} catch (error) {
-		console.error('Error regenerating API key:', error);
+		logger.error(
+			{ err: error, component: 'ApiKeyRegenerateApi', keyId: id },
+			'Error regenerating API key'
+		);
 		return json({ error: 'Failed to regenerate API key' }, { status: 500 });
 	}
 };

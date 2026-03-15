@@ -12,7 +12,9 @@
 
 import type { ThrottleableErrorType } from '../errors/ProviderErrors';
 import type { ProviderImplementation } from '../types';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
@@ -482,9 +484,12 @@ export class ThrottleManager {
 				logger.debug(`Loaded throttle data: ${this.throttleStates.size} active throttles`);
 			}
 		} catch (error) {
-			logger.warn('Failed to load throttle data', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to load throttle data'
+			);
 		}
 	}
 
@@ -503,9 +508,12 @@ export class ThrottleManager {
 
 			writeFileSync(THROTTLE_DATA_FILE, JSON.stringify(data, null, 2));
 		} catch (error) {
-			logger.warn('Failed to persist throttle data', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to persist throttle data'
+			);
 		}
 	}
 }

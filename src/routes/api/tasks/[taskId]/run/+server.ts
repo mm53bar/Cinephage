@@ -32,15 +32,18 @@ async function getUserStreamingApiKey(userId: string): Promise<string | null> {
 		const key = await getRecoverableApiKeyByType('streaming', userId);
 
 		if (!key) {
-			logger.warn('[TaskRunAPI] No Media Streaming API Key found for user', { userId });
+			logger.warn({ userId }, '[TaskRunAPI] No Media Streaming API Key found for user');
 			return null;
 		}
 
 		return key;
 	} catch (error) {
-		logger.error('[TaskRunAPI] Failed to fetch Media Streaming API Key', {
-			error: error instanceof Error ? error.message : 'Unknown error'
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : 'Unknown error'
+			},
+			'[TaskRunAPI] Failed to fetch Media Streaming API Key'
+		);
 		return null;
 	}
 }
@@ -128,12 +131,15 @@ export const POST: RequestHandler = async (event) => {
 				{ status: 400 }
 			);
 		}
-		logger.info('[TaskRunAPI] Retrieved Media Streaming API Key for user', {
-			userId: locals.user.id
-		});
+		logger.info(
+			{
+				userId: locals.user.id
+			},
+			'[TaskRunAPI] Retrieved Media Streaming API Key for user'
+		);
 	}
 
-	logger.info('[TaskRunAPI] Starting task', { taskId, endpoint: taskDef.runEndpoint });
+	logger.info({ taskId, endpoint: taskDef.runEndpoint }, '[TaskRunAPI] Starting task');
 
 	// Start tracking the task
 	let historyId: string;
@@ -170,7 +176,7 @@ export const POST: RequestHandler = async (event) => {
 		if (result.success) {
 			await taskHistoryService.completeTask(historyId, result);
 			const summary = buildResultSummary(result as Record<string, unknown>);
-			logger.info('[TaskRunAPI] Task completed successfully', { taskId, summary });
+			logger.info({ taskId, summary }, '[TaskRunAPI] Task completed successfully');
 
 			// Emit SSE event: task completed
 			// Build a TaskResult-compatible object for the SSE handler
@@ -185,7 +191,7 @@ export const POST: RequestHandler = async (event) => {
 		} else {
 			const errors = [result.error || 'Task endpoint returned failure'];
 			await taskHistoryService.failTask(historyId, errors);
-			logger.error('[TaskRunAPI] Task failed', { taskId, errors });
+			logger.error({ taskId, errors }, '[TaskRunAPI] Task failed');
 
 			// Emit SSE event: task failed
 			monitoringScheduler.emit('manualTaskFailed', taskId, new Error(errors[0]));
@@ -195,7 +201,7 @@ export const POST: RequestHandler = async (event) => {
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
 		await taskHistoryService.failTask(historyId, [message]);
-		logger.error('[TaskRunAPI] Task execution error', { taskId, error: message });
+		logger.error({ taskId, error: message }, '[TaskRunAPI] Task execution error');
 
 		// Emit SSE event: task failed
 		monitoringScheduler.emit('manualTaskFailed', taskId, error);

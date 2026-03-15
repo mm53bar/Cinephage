@@ -164,11 +164,13 @@ export const POST: RequestHandler = async ({ request }) => {
 				}
 			} catch (error) {
 				logger.error(
-					'[API] Error adding movie in bulk',
-					error instanceof Error ? error : undefined,
 					{
-						tmdbId
-					}
+						err: error instanceof Error ? error : undefined,
+						...{
+							tmdbId
+						}
+					},
+					'[API] Error adding movie in bulk'
 				);
 				results.errors.push({
 					tmdbId,

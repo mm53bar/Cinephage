@@ -171,7 +171,7 @@ export class EpgService {
 		}
 
 		if (attachedCount > 0) {
-			logger.info('Auto-attached lineup EPG sources', { accountId, attachedCount });
+			logger.info({ accountId, attachedCount }, 'Auto-attached lineup EPG sources');
 			liveTvEvents.emitLineupUpdated();
 		}
 
@@ -238,11 +238,14 @@ export class EpgService {
 		}
 
 		try {
-			logger.info('Starting EPG sync', {
-				accountId,
-				name: account.name,
-				providerType: account.providerType
-			});
+			logger.info(
+				{
+					accountId,
+					name: account.name,
+					providerType: account.providerType
+				},
+				'Starting EPG sync'
+			);
 
 			// Convert account record to LiveTvAccount type
 			const liveTvAccount: LiveTvAccount = {
@@ -283,13 +286,16 @@ export class EpgService {
 
 			if (epgPrograms.length === 0) {
 				const accountStats = await this.getAccountEpgStats(accountId);
-				logger.info('No EPG data returned from provider', {
-					accountId,
-					name: account.name,
-					providerType: account.providerType,
-					existingPrograms: accountStats.programCount,
-					existingChannelsWithEpg: accountStats.channelsWithEpg
-				});
+				logger.info(
+					{
+						accountId,
+						name: account.name,
+						providerType: account.providerType,
+						existingPrograms: accountStats.programCount,
+						existingChannelsWithEpg: accountStats.channelsWithEpg
+					},
+					'No EPG data returned from provider'
+				);
 
 				// Update account status based on what is currently cached.
 				await this.updateAccountEpgStatus(accountId, {
@@ -327,16 +333,19 @@ export class EpgService {
 			const autoAttachedCount = await this.autoAttachMissingLineupEpgSources(accountId);
 			const accountStats = await this.getAccountEpgStats(accountId);
 
-			logger.info('EPG sync complete', {
-				accountId,
-				name: account.name,
-				providerType: account.providerType,
-				...result,
-				autoAttachedCount,
-				channelsWithEpg: accountStats.channelsWithEpg,
-				guideEndsAt: accountStats.guideEndsAt,
-				duration: Date.now() - startTime
-			});
+			logger.info(
+				{
+					accountId,
+					name: account.name,
+					providerType: account.providerType,
+					...result,
+					autoAttachedCount,
+					channelsWithEpg: accountStats.channelsWithEpg,
+					guideEndsAt: accountStats.guideEndsAt,
+					duration: Date.now() - startTime
+				},
+				'EPG sync complete'
+			);
 
 			// Update account status - successful sync with EPG data
 			await this.updateAccountEpgStatus(accountId, {
@@ -356,12 +365,15 @@ export class EpgService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('EPG sync failed', {
-				accountId,
-				name: account.name,
-				providerType: account.providerType,
-				error: message
-			});
+			logger.error(
+				{
+					accountId,
+					name: account.name,
+					providerType: account.providerType,
+					error: message
+				},
+				'EPG sync failed'
+			);
 
 			// Update account status - sync failed
 			await this.updateAccountEpgStatus(accountId, {
@@ -389,9 +401,12 @@ export class EpgService {
 	async syncAll(): Promise<EpgSyncResult[]> {
 		const accounts = await db.select().from(livetvAccounts).where(eq(livetvAccounts.enabled, true));
 
-		logger.info('Starting EPG sync for all accounts', {
-			accountCount: accounts.length
-		});
+		logger.info(
+			{
+				accountCount: accounts.length
+			},
+			'Starting EPG sync for all accounts'
+		);
 
 		const results: EpgSyncResult[] = [];
 
@@ -407,12 +422,15 @@ export class EpgService {
 		const totalUpdated = results.reduce((sum, r) => sum + r.programsUpdated, 0);
 		const successful = results.filter((r) => r.success).length;
 
-		logger.info('EPG sync complete for all accounts', {
-			accounts: accounts.length,
-			successful,
-			totalAdded,
-			totalUpdated
-		});
+		logger.info(
+			{
+				accounts: accounts.length,
+				successful,
+				totalAdded,
+				totalUpdated
+			},
+			'EPG sync complete for all accounts'
+		);
 
 		return results;
 	}
@@ -503,11 +521,14 @@ export class EpgService {
 		}[] = Array.from(uniquePrograms.values());
 
 		if (unmatchedExternalChannelIds.size > 0) {
-			logger.warn('EPG sync skipped unmatched provider channels', {
-				accountId,
-				unmatchedChannelCount: unmatchedExternalChannelIds.size,
-				samples: Array.from(unmatchedExternalChannelIds).slice(0, 10)
-			});
+			logger.warn(
+				{
+					accountId,
+					unmatchedChannelCount: unmatchedExternalChannelIds.size,
+					samples: Array.from(unmatchedExternalChannelIds).slice(0, 10)
+				},
+				'EPG sync skipped unmatched provider channels'
+			);
 		}
 
 		if (allPrograms.length > 0) {
@@ -730,10 +751,13 @@ export class EpgService {
 		const deleted = db.delete(epgPrograms).where(lte(epgPrograms.endTime, cutoffTime)).run();
 
 		if (deleted.changes > 0) {
-			logger.info('Cleaned up old EPG programs', {
-				deleted: deleted.changes,
-				cutoffTime
-			});
+			logger.info(
+				{
+					deleted: deleted.changes,
+					cutoffTime
+				},
+				'Cleaned up old EPG programs'
+			);
 		}
 
 		return deleted.changes ?? 0;

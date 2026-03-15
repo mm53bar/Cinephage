@@ -245,11 +245,14 @@ export const POST: RequestHandler = async (event) => {
 
 		// Fetch and store alternate titles from TMDB (non-blocking)
 		fetchAndStoreSeriesAlternateTitles(newSeries.id, tmdbId).catch((err) => {
-			logger.warn('Failed to fetch alternate titles for series', {
-				seriesId: newSeries.id,
-				tmdbId,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					seriesId: newSeries.id,
+					tmdbId,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'Failed to fetch alternate titles for series'
+			);
 		});
 
 		// Insert seasons and episodes
@@ -377,9 +380,12 @@ export const POST: RequestHandler = async (event) => {
 					// Small delay to avoid TMDB rate limiting
 					await new Promise((resolve) => setTimeout(resolve, 50));
 				} catch {
-					logger.warn('[API] Failed to fetch episodes for season', {
-						seasonNumber: s.season_number
-					});
+					logger.warn(
+						{
+							seasonNumber: s.season_number
+						},
+						'[API] Failed to fetch episodes for season'
+					);
 				}
 			}
 		}

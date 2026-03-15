@@ -498,6 +498,7 @@ export const subtitleProviderTestSchema = z.object({
 // ============================================================
 
 import { isValidLanguageCode } from '$lib/shared/languages';
+import { CAPTURED_LOG_LEVELS, CAPTURED_LOG_DOMAINS } from '$lib/logging/log-capture';
 
 /**
  * Schema for language preference in a profile.
@@ -968,3 +969,32 @@ export const stalkerPortalDetectSchema = z.object({
 export type StalkerPortalCreate = z.infer<typeof stalkerPortalCreateSchema>;
 export type StalkerPortalUpdate = z.infer<typeof stalkerPortalUpdateSchema>;
 export type StalkerPortalDetect = z.infer<typeof stalkerPortalDetectSchema>;
+
+// ============================================================
+// Log Filter Schemas
+// ============================================================
+
+/**
+ * Schema for log filter query parameters (SSE stream & download).
+ * Supports both single `level` and comma-separated `levels` for multi-toggle.
+ */
+export const logFilterQuerySchema = z.object({
+	level: z.enum(CAPTURED_LOG_LEVELS).optional(),
+	levels: z
+		.string()
+		.optional()
+		.transform((v) =>
+			v
+				? (v
+						.split(',')
+						.filter((l) =>
+							(CAPTURED_LOG_LEVELS as readonly string[]).includes(l)
+						) as (typeof CAPTURED_LOG_LEVELS)[number][])
+				: undefined
+		),
+	logDomain: z.enum(CAPTURED_LOG_DOMAINS).optional(),
+	search: z.string().max(200).optional(),
+	limit: z.coerce.number().int().min(1).max(1000).optional()
+});
+
+export type LogFilterQuery = z.infer<typeof logFilterQuerySchema>;

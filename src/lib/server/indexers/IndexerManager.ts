@@ -14,7 +14,9 @@ import {
 } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 import type {
 	IIndexer,
@@ -67,17 +69,23 @@ export class IndexerManager {
 		// Seed built-in streaming indexer if not exists
 		await this.seedStreamingIndexer();
 
-		logger.info('IndexerManager initialized', {
-			definitionCount: this.definitionLoader.count,
-			errors: this.definitionLoader.getErrors().length
-		});
+		logger.info(
+			{
+				definitionCount: this.definitionLoader.count,
+				errors: this.definitionLoader.getErrors().length
+			},
+			'IndexerManager initialized'
+		);
 
 		// Log any errors
 		for (const error of this.definitionLoader.getErrors()) {
-			logger.warn('Definition load error', {
-				file: error.filePath,
-				error: error.error
-			});
+			logger.warn(
+				{
+					file: error.filePath,
+					error: error.error
+				},
+				'Definition load error'
+			);
 		}
 	}
 
@@ -146,7 +154,7 @@ export class IndexerManager {
 		// Get definition info from YAML loader
 		const def = this.definitionLoader.get(CINEPHAGE_STREAM_DEFINITION_ID);
 		if (!def) {
-			logger.warn('Streaming indexer definition not found', { id: CINEPHAGE_STREAM_DEFINITION_ID });
+			logger.warn({ id: CINEPHAGE_STREAM_DEFINITION_ID }, 'Streaming indexer definition not found');
 			return;
 		}
 
@@ -161,10 +169,13 @@ export class IndexerManager {
 			enableInteractiveSearch: true // Include in manual searches
 		});
 
-		logger.info('Seeded built-in streaming indexer to database', {
-			definitionId: CINEPHAGE_STREAM_DEFINITION_ID,
-			name: def.name
-		});
+		logger.info(
+			{
+				definitionId: CINEPHAGE_STREAM_DEFINITION_ID,
+				name: def.name
+			},
+			'Seeded built-in streaming indexer to database'
+		);
 	}
 
 	/** Get all configured indexers from database */
@@ -355,11 +366,14 @@ export class IndexerManager {
 	private async createIndexerInstance(config: IndexerConfig): Promise<IIndexer | null> {
 		const instance = await this.indexerFactory.createIndexer(config);
 		if (instance) {
-			logger.debug('Created indexer instance', {
-				indexerId: config.id,
-				definitionId: config.definitionId,
-				protocol: config.protocol
-			});
+			logger.debug(
+				{
+					indexerId: config.id,
+					definitionId: config.definitionId,
+					protocol: config.protocol
+				},
+				'Created indexer instance'
+			);
 		}
 		return instance;
 	}
@@ -382,7 +396,7 @@ export class IndexerManager {
 			}
 			return instance;
 		} catch (error) {
-			logger.error('Failed to create indexer instance', error, { indexerId: id });
+			logger.error({ err: error, ...{ indexerId: id } }, 'Failed to create indexer instance');
 			return undefined;
 		}
 	}
@@ -415,15 +429,21 @@ export class IndexerManager {
 					created.push(instance);
 				}
 			} catch (error) {
-				logger.error('Failed to create indexer instance', error, { indexerId: config.id });
+				logger.error(
+					{ err: error, ...{ indexerId: config.id } },
+					'Failed to create indexer instance'
+				);
 			}
 		}
 
-		logger.debug('getEnabledIndexers batch result', {
-			total: enabledConfigs.length,
-			cached: cached.length,
-			newlyCreated: created.length
-		});
+		logger.debug(
+			{
+				total: enabledConfigs.length,
+				cached: cached.length,
+				newlyCreated: created.length
+			},
+			'getEnabledIndexers batch result'
+		);
 
 		return [...cached, ...created];
 	}

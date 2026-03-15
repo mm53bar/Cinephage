@@ -627,7 +627,9 @@
 			}
 			canManageHistory = true;
 		} catch (error) {
-			console.error('Failed to load history settings:', error);
+			toasts.error('Failed to load history settings', {
+				description: error instanceof Error ? error.message : 'Failed to load history settings'
+			});
 			canManageHistory = false;
 		} finally {
 			settingsLoading = false;
@@ -906,8 +908,7 @@
 
 		try {
 			await refreshActivityData({ force: true });
-		} catch (error) {
-			console.error('Activity refresh failed after purge:', error);
+		} catch (_error) {
 			toasts.info('Purge completed. Activity list will refresh shortly.');
 		} finally {
 			purgeOlderLoading = false;
@@ -971,8 +972,7 @@
 
 		try {
 			await refreshActivityData({ force: true });
-		} catch (error) {
-			console.error('Activity refresh failed after delete selected:', error);
+		} catch (_error) {
 			toasts.info('Delete completed. Activity list will refresh shortly.');
 		} finally {
 			deleteSelectedLoading = false;
@@ -1037,8 +1037,7 @@
 			if (successCount > 0 && (action === 'retry_failed' || action === 'remove_failed')) {
 				await refreshActivityData({ force: true });
 			}
-		} catch (error) {
-			console.error('Activity refresh failed after bulk queue action:', error);
+		} catch (_error) {
 			toasts.info('Queue action completed. Activity list will refresh shortly.');
 		} finally {
 			activeBulkLoading = false;
@@ -1081,8 +1080,7 @@
 		const normalizedFilters = normalizeFiltersForTab(newFilters, tab);
 		try {
 			await fetchActivityData(normalizedFilters, tab, { updateUrl: true });
-		} catch (error) {
-			console.error('Failed to apply activity filters:', error);
+		} catch (_error) {
 			toasts.error('Failed to update activity filters');
 		} finally {
 			// handled by fetchActivityData
@@ -1095,8 +1093,7 @@
 		const tabFilters = normalizeFiltersForTab(getFiltersForTab(tab), tab);
 		try {
 			await fetchActivityData(tabFilters, tab, { updateUrl: true });
-		} catch (error) {
-			console.error('Failed to switch activity tab:', error);
+		} catch (_error) {
 			toasts.error('Failed to switch activity tab');
 		} finally {
 			// handled by fetchActivityData
@@ -1139,8 +1136,7 @@
 
 		try {
 			await fetchActivityData(filters, activityTab, { offset: loadedOffset, append: true });
-		} catch (error) {
-			console.error('Failed to load more:', error);
+		} catch (_error) {
 			toasts.error('Failed to load more activity');
 		}
 	}

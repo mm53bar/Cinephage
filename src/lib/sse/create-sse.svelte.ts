@@ -6,7 +6,7 @@
  *
  * @example
  * const sse = createSSE('/api/stream', {
- *   'event:name': (data) => console.log(data)
+ *   'event:name': (data) => handleEvent(data)
  * });
  *
  * {#if sse.isConnected}
@@ -65,7 +65,6 @@ export function createSSE<T = Record<string, unknown>>(
 	let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 	let isManuallyClosed = false;
 	let lastUrl = getUrl();
-	let activeUrl: string | null = null;
 	let lastServerActivity = Date.now();
 
 	// Store event listener references for cleanup
@@ -76,7 +75,7 @@ export function createSSE<T = Record<string, unknown>>(
 	 */
 	function debug(...args: unknown[]): void {
 		if (config.debug) {
-			console.log('[SSE]', ...args);
+			void args;
 		}
 	}
 
@@ -177,7 +176,6 @@ export function createSSE<T = Record<string, unknown>>(
 			eventSource = null;
 		}
 
-		activeUrl = null;
 		setStatus(nextStatus);
 	}
 
@@ -210,7 +208,6 @@ export function createSSE<T = Record<string, unknown>>(
 		try {
 			// Create new connection
 			eventSource = new EventSource(nextUrl);
-			activeUrl = nextUrl;
 
 			// Handle connection open
 			const onOpen = () => {

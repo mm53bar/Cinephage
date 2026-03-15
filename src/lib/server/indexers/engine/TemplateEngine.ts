@@ -13,7 +13,9 @@ import type {
 import { generateEpisodeFormat } from '../search/SearchFormatProvider';
 import type { FilterBlock, SettingsField } from '../schema/yamlDefinition';
 import { createSafeRegex, safeReplace } from './safeRegex';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 export type TemplateVariables = Map<string, unknown>;
 
@@ -695,10 +697,13 @@ export class TemplateEngine {
 		// Limit iterations to prevent ReDoS attacks from malicious templates
 		while ((match = TemplateEngine.LOGIC_FUNCTION_REGEX.exec(result)) !== null) {
 			if (++iterations > TemplateEngine.MAX_LOGIC_ITERATIONS) {
-				logger.warn('Template logic processing exceeded max iterations', {
-					iterations,
-					templateLength: template.length
-				});
+				logger.warn(
+					{
+						iterations,
+						templateLength: template.length
+					},
+					'Template logic processing exceeded max iterations'
+				);
 				break;
 			}
 
@@ -1188,7 +1193,7 @@ export class TemplateEngine {
 
 			default:
 				// Unknown filter, return as-is
-				logger.warn('Unknown inline filter', { name });
+				logger.warn({ name }, 'Unknown inline filter');
 				return value;
 		}
 	}

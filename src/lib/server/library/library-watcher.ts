@@ -13,7 +13,9 @@ import { diskScanService } from './disk-scan.js';
 import { mediaMatcherService } from './media-matcher.js';
 import { isVideoFile } from './media-info.js';
 import { EventEmitter } from 'events';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 
 /**
  * Debounce time for processing file events (ms)
@@ -88,7 +90,7 @@ export class LibraryWatcherService extends EventEmitter {
 		}
 
 		this.enabled = true;
-		logger.info('[LibraryWatcher] Initialized watchers', { folderCount: folders.length });
+		logger.info({ folderCount: folders.length }, '[LibraryWatcher] Initialized watchers');
 	}
 
 	/**
@@ -97,7 +99,7 @@ export class LibraryWatcherService extends EventEmitter {
 	async shutdown(): Promise<void> {
 		for (const [folderId, watcher] of this.watchers) {
 			await watcher.close();
-			logger.debug('[LibraryWatcher] Stopped watching folder', { folderId });
+			logger.debug({ folderId }, '[LibraryWatcher] Stopped watching folder');
 		}
 
 		this.watchers.clear();
@@ -149,11 +151,11 @@ export class LibraryWatcherService extends EventEmitter {
 			.on('change', (path) => this.handleFileEvent('change', path, folderId))
 			.on('unlink', (path) => this.handleFileEvent('unlink', path, folderId))
 			.on('error', (error) => {
-				logger.error('[LibraryWatcher] Error in folder', error, { folderId });
+				logger.error({ err: error, ...{ folderId } }, '[LibraryWatcher] Error in folder');
 				this.emit('error', { folderId, error });
 			})
 			.on('ready', () => {
-				logger.info('[LibraryWatcher] Watching folder', { folderPath });
+				logger.info({ folderPath }, '[LibraryWatcher] Watching folder');
 			});
 
 		this.watchers.set(folderId, watcher);
@@ -176,7 +178,7 @@ export class LibraryWatcherService extends EventEmitter {
 				}
 			}
 
-			logger.debug('[LibraryWatcher] Stopped watching folder', { folderId });
+			logger.debug({ folderId }, '[LibraryWatcher] Stopped watching folder');
 		}
 	}
 
@@ -193,7 +195,7 @@ export class LibraryWatcherService extends EventEmitter {
 			return;
 		}
 
-		logger.debug('[LibraryWatcher] File event', { type, path });
+		logger.debug({ type, path }, '[LibraryWatcher] File event');
 
 		// Queue the change
 		this.pendingChanges.set(path, {
@@ -235,14 +237,17 @@ export class LibraryWatcherService extends EventEmitter {
 
 		// Process each folder with a SINGLE scan
 		for (const [folderId, changes] of changesByFolder) {
-			logger.info('[LibraryWatcher] Processing changes', { folderId, changeCount: changes.length });
+			logger.info({ folderId, changeCount: changes.length }, '[LibraryWatcher] Processing changes');
 
 			try {
 				// Check if scan is already running
 				if (diskScanService.scanning) {
-					logger.debug('[LibraryWatcher] Scan already running, re-queueing changes', {
-						changeCount: changes.length
-					});
+					logger.debug(
+						{
+							changeCount: changes.length
+						},
+						'[LibraryWatcher] Scan already running, re-queueing changes'
+					);
 					// Re-queue the changes for later processing
 					for (const change of changes) {
 						this.pendingChanges.set(change.path, change);
@@ -265,7 +270,7 @@ export class LibraryWatcherService extends EventEmitter {
 
 				this.emit('processed', { folderId, changes: changes.length });
 			} catch (error) {
-				logger.error('[LibraryWatcher] Error processing changes', error, { folderId });
+				logger.error({ err: error, ...{ folderId } }, '[LibraryWatcher] Error processing changes');
 				this.emit('error', { folderId, error });
 			}
 		}

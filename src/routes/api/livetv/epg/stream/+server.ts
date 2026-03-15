@@ -96,9 +96,12 @@ export const GET: RequestHandler = async () => {
 				const lineup = await channelLineupService.getLineup();
 				send('epg:initial', { status, lineup });
 			} catch (error) {
-				logger.error('Failed to fetch initial EPG state', {
-					error: error instanceof Error ? error.message : 'Unknown error'
-				});
+				logger.error(
+					{
+						error: error instanceof Error ? error.message : 'Unknown error'
+					},
+					'Failed to fetch initial EPG state'
+				);
 				send('epg:error', { message: 'Failed to fetch initial state' });
 			}
 		};

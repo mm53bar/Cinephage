@@ -48,25 +48,34 @@ export const POST: RequestHandler = async (event) => {
 			return json({ error: 'All fileIds must be strings' }, { status: 400 });
 		}
 
-		logger.info('[RenameExecute API] Starting rename execution', {
-			fileCount: fileIds.length,
-			mediaType
-		});
+		logger.info(
+			{
+				fileCount: fileIds.length,
+				mediaType
+			},
+			'[RenameExecute API] Starting rename execution'
+		);
 
 		const service = new RenamePreviewService();
 		const result = await service.executeRenames(fileIds, mediaType);
 
-		logger.info('[RenameExecute API] Rename execution complete', {
-			processed: result.processed,
-			succeeded: result.succeeded,
-			failed: result.failed
-		});
+		logger.info(
+			{
+				processed: result.processed,
+				succeeded: result.succeeded,
+				failed: result.failed
+			},
+			'[RenameExecute API] Rename execution complete'
+		);
 
 		return json(result);
 	} catch (error) {
-		logger.error('[RenameExecute API] Failed to execute renames', {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'[RenameExecute API] Failed to execute renames'
+		);
 
 		return json(
 			{

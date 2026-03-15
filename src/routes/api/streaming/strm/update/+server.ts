@@ -57,22 +57,25 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			baseUrl = await getStreamingBaseUrl(requestBaseUrl);
 		}
 
-		logger.info('[StrmUpdateAPI] Starting bulk .strm update', { baseUrl, hasApiKey: !!apiKey });
+		logger.info({ baseUrl, hasApiKey: !!apiKey }, '[StrmUpdateAPI] Starting bulk .strm update');
 
 		// Perform the bulk update with API key if provided
 		const result = await strmService.bulkUpdateStrmUrls(baseUrl, apiKey ? { apiKey } : undefined);
 
-		logger.info('[StrmUpdateAPI] Bulk update complete', {
-			success: result.success,
-			totalFiles: result.totalFiles,
-			updatedFiles: result.updatedFiles,
-			errors: result.errors.length
-		});
+		logger.info(
+			{
+				success: result.success,
+				totalFiles: result.totalFiles,
+				updatedFiles: result.updatedFiles,
+				errors: result.errors.length
+			},
+			'[StrmUpdateAPI] Bulk update complete'
+		);
 
 		return json(result);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.error('[StrmUpdateAPI] Bulk update failed', { error: message });
+		logger.error({ error: message }, '[StrmUpdateAPI] Bulk update failed');
 
 		return json(
 			{

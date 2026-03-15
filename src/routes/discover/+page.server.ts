@@ -285,7 +285,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			};
 		}
 	} catch (e) {
-		logger.error('Discover load error', e, { type, sortBy });
+		logger.error({ err: e, ...{ type, sortBy } }, 'Discover load error');
 		return {
 			viewType: 'error',
 			tmdbConfigured: true, // API key exists but request failed

@@ -100,11 +100,14 @@ async function getMovieData(movieId: string): Promise<LibraryMovie | null> {
 			.from(subtitles)
 			.where(eq(subtitles.movieId, movieId)),
 		tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
-			logger.warn('[MovieStream] Failed to fetch TMDB release info', {
-				movieId,
-				tmdbId: movie.tmdbId,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					movieId,
+					tmdbId: movie.tmdbId,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'[MovieStream] Failed to fetch TMDB release info'
+			);
 			return null;
 		})
 	]);
@@ -190,10 +193,7 @@ export const GET: RequestHandler = async ({ params }) => {
 				send('queue:sync', { queueItem });
 				return queueItem;
 			} catch (error) {
-				logger.error('[MovieStream] Failed to fetch queue sync', {
-					movieId,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error({ err: error, movieId }, '[MovieStream] Failed to fetch queue sync');
 				return null;
 			}
 		};
@@ -209,10 +209,7 @@ export const GET: RequestHandler = async ({ params }) => {
 					send('media:updated', { movie, queueItem });
 				}
 			} catch (error) {
-				logger.error('[MovieStream] Failed to fetch movie update', {
-					movieId,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error({ err: error, movieId }, '[MovieStream] Failed to fetch movie update');
 			}
 		};
 
@@ -220,10 +217,13 @@ export const GET: RequestHandler = async ({ params }) => {
 		void sendQueueSync().then(() => {
 			// Replay recent buffered events (handles race condition where events fired before connection)
 			const recentEvents = eventBuffer.getRecentMovieEvents(movieId);
-			logger.debug('[MovieStream] Replaying buffered events', {
-				movieId,
-				count: recentEvents.length
-			});
+			logger.debug(
+				{
+					movieId,
+					count: recentEvents.length
+				},
+				'[MovieStream] Replaying buffered events'
+			);
 			for (const event of recentEvents) {
 				send('file:added', {
 					file: event.file,
@@ -237,10 +237,13 @@ export const GET: RequestHandler = async ({ params }) => {
 		const onQueueAdded = (item: unknown) => {
 			const typedItem = item as QueueItem & { movieId?: string };
 			if (typedItem.movieId === movieId) {
-				logger.debug('[MovieStream] Queue item added for movie', {
-					movieId,
-					queueItemId: typedItem.id
-				});
+				logger.debug(
+					{
+						movieId,
+						queueItemId: typedItem.id
+					},
+					'[MovieStream] Queue item added for movie'
+				);
 				send('queue:added', {
 					id: typedItem.id,
 					title: typedItem.title,
@@ -271,10 +274,13 @@ export const GET: RequestHandler = async ({ params }) => {
 		const onFileImported = (data: unknown) => {
 			const typedData = data as FileImportedEvent;
 			if (typedData.mediaType === 'movie' && typedData.movieId === movieId) {
-				logger.debug('[MovieStream] File imported for movie', {
-					movieId,
-					fileId: typedData.file.id
-				});
+				logger.debug(
+					{
+						movieId,
+						fileId: typedData.file.id
+					},
+					'[MovieStream] File imported for movie'
+				);
 				send('file:added', {
 					file: typedData.file,
 					wasUpgrade: typedData.wasUpgrade,

@@ -161,16 +161,19 @@ export async function fetchAndStoreMovieAlternateTitles(
 		}
 
 		if (inserted > 0) {
-			logger.debug(`Stored ${inserted} alternate titles for movie`, { movieId, tmdbId });
+			logger.debug({ movieId, tmdbId }, `Stored ${inserted} alternate titles for movie`);
 		}
 
 		return inserted;
 	} catch (error) {
-		logger.warn('Failed to fetch movie alternate titles', {
-			movieId,
-			tmdbId,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.warn(
+			{
+				movieId,
+				tmdbId,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to fetch movie alternate titles'
+		);
 		return 0;
 	}
 }
@@ -217,16 +220,19 @@ export async function fetchAndStoreSeriesAlternateTitles(
 		}
 
 		if (inserted > 0) {
-			logger.debug(`Stored ${inserted} alternate titles for series`, { seriesId, tmdbId });
+			logger.debug({ seriesId, tmdbId }, `Stored ${inserted} alternate titles for series`);
 		}
 
 		return inserted;
 	} catch (error) {
-		logger.warn('Failed to fetch series alternate titles', {
-			seriesId,
-			tmdbId,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.warn(
+			{
+				seriesId,
+				tmdbId,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to fetch series alternate titles'
+		);
 		return 0;
 	}
 }
@@ -265,15 +271,18 @@ export async function addUserAlternateTitle(
 			})
 			.returning();
 
-		logger.info(`Added user alternate title`, { mediaType, mediaId, title });
+		logger.info({ mediaType, mediaId, title }, `Added user alternate title`);
 		return { id: inserted.id, title: inserted.title, source: inserted.source };
 	} catch (error) {
-		logger.error('Failed to add user alternate title', {
-			mediaType,
-			mediaId,
-			title,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				mediaType,
+				mediaId,
+				title,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to add user alternate title'
+		);
 		throw error;
 	}
 }
@@ -316,16 +325,19 @@ export async function removeAlternateTitle(
 		}
 
 		await db.delete(alternateTitles).where(eq(alternateTitles.id, titleRecord.id));
-		logger.info(`Removed user alternate title`, { mediaType, mediaId, id: titleRecord.id });
+		logger.info({ mediaType, mediaId, id: titleRecord.id }, `Removed user alternate title`);
 		return true;
 	} catch (error) {
-		logger.error('Failed to remove alternate title', {
-			mediaType,
-			mediaId,
-			id,
-			title,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				mediaType,
+				mediaId,
+				id,
+				title,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to remove alternate title'
+		);
 		return false;
 	}
 }

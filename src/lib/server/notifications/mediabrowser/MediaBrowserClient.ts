@@ -5,7 +5,9 @@
  * Both use the same MediaBrowser API with minimal differences.
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 import type {
 	MediaBrowserPathMapping,
 	MediaBrowserServerType,
@@ -87,22 +89,31 @@ export class MediaBrowserClient {
 			});
 
 			if (!response.ok) {
-				logger.warn('MediaBrowser library update failed', {
-					serverType: this.serverType,
-					status: response.status,
-					statusText: response.statusText
-				});
+				logger.warn(
+					{
+						serverType: this.serverType,
+						status: response.status,
+						statusText: response.statusText
+					},
+					'MediaBrowser library update failed'
+				);
 			} else {
-				logger.debug('MediaBrowser library update sent', {
-					serverType: this.serverType,
-					updates: payload.Updates.length
-				});
+				logger.debug(
+					{
+						serverType: this.serverType,
+						updates: payload.Updates.length
+					},
+					'MediaBrowser library update sent'
+				);
 			}
 		} catch (error) {
-			logger.error('MediaBrowser library update error', {
-				serverType: this.serverType,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					serverType: this.serverType,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'MediaBrowser library update error'
+			);
 		}
 	}
 
@@ -116,20 +127,29 @@ export class MediaBrowserClient {
 			});
 
 			if (!response.ok) {
-				logger.warn('MediaBrowser library refresh failed', {
-					serverType: this.serverType,
-					status: response.status
-				});
+				logger.warn(
+					{
+						serverType: this.serverType,
+						status: response.status
+					},
+					'MediaBrowser library refresh failed'
+				);
 			} else {
-				logger.debug('MediaBrowser library refresh triggered', {
-					serverType: this.serverType
-				});
+				logger.debug(
+					{
+						serverType: this.serverType
+					},
+					'MediaBrowser library refresh triggered'
+				);
 			}
 		} catch (error) {
-			logger.error('MediaBrowser library refresh error', {
-				serverType: this.serverType,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					serverType: this.serverType,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'MediaBrowser library refresh error'
+			);
 		}
 	}
 

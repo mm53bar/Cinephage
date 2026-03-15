@@ -151,9 +151,9 @@ If you later access Cinephage through a hostname or reverse proxy, update
 `BETTER_AUTH_URL` to that public URL. You can also set the External URL in the UI under
 `Settings > System`.
 
-> **Note:** Your data, config, and logs are stored in `./config` (automatically created). Never mount `/app` as it contains application code.
+> **Note:** Your persistent app data and cache are stored in `./config` (automatically created). Logs are emitted to container stdout/stderr. Never mount `/app` as it contains application code.
 >
-> **Upgrading from older versions?** See [Migration Guide](docs/support/troubleshooting.md#migration-from-legacy-appdata-and-applogs-mounts) if you previously used `/app/data` and `/app/logs` mounts.
+> **Upgrading from older versions?** See [Migration Guide](docs/support/troubleshooting.md#migration-from-legacy-appdata-mounts) if you previously used `/app/data` mounts.
 
 ### Requirements
 

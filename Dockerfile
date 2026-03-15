@@ -84,7 +84,7 @@ RUN rm -rf /usr/local/lib/node_modules/npm \
 	&& rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 
 # Pre-create config directories; ownership is fixed at runtime by entrypoint
-RUN mkdir -p /config/data /config/logs /config/cache
+RUN mkdir -p /config/data /config/cache
 
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/build ./build
@@ -101,7 +101,6 @@ ENV NODE_ENV=production \
     PORT=3000 \
     FFPROBE_PATH=/usr/bin/ffprobe \
     DATA_DIR=/config/data \
-    LOG_DIR=/config/logs \
     INDEXER_DEFINITIONS_PATH=/config/data/indexers/definitions \
     EXTERNAL_LISTS_PRESETS_PATH=/config/data/external-lists/presets
 

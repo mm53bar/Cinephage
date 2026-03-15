@@ -22,7 +22,9 @@ import { randomUUID } from 'node:crypto';
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname, join, basename, extname } from 'path';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { normalizeLanguageCode } from '$lib/shared/languages';
 import type {
 	SubtitleSearchResult,
@@ -171,7 +173,7 @@ export class SubtitleDownloadService {
 		const fullPath = await this.getSubtitleFullPath(subtitle[0]);
 		if (fullPath && existsSync(fullPath)) {
 			await unlink(fullPath);
-			logger.debug('Deleted subtitle file', { path: fullPath });
+			logger.debug({ path: fullPath }, 'Deleted subtitle file');
 		}
 
 		// Add to blacklist if requested
@@ -200,10 +202,13 @@ export class SubtitleDownloadService {
 		// Delete from database
 		await db.delete(subtitles).where(eq(subtitles.id, subtitleId));
 
-		logger.info('Subtitle deleted', {
-			subtitleId,
-			blacklisted: addToBlacklist
-		});
+		logger.info(
+			{
+				subtitleId,
+				blacklisted: addToBlacklist
+			},
+			'Subtitle deleted'
+		);
 	}
 
 	/**
@@ -239,10 +244,13 @@ export class SubtitleDownloadService {
 		try {
 			content = await provider.download(result);
 		} catch (error) {
-			logger.error('Failed to download subtitle', {
-				provider: result.providerName,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					provider: result.providerName,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to download subtitle'
+			);
 			throw error;
 		}
 
@@ -269,10 +277,13 @@ export class SubtitleDownloadService {
 		const subtitlePath = join(options.mediaPath, subtitleFileName);
 		await writeFile(subtitlePath, content);
 
-		logger.debug('Saved subtitle file', {
-			path: subtitlePath,
-			size: content.length
-		});
+		logger.debug(
+			{
+				path: subtitlePath,
+				size: content.length
+			},
+			'Saved subtitle file'
+		);
 
 		// Check for existing subtitle to upgrade
 		const existingSubtitle = await this.findExistingSubtitle(
@@ -332,12 +343,15 @@ export class SubtitleDownloadService {
 			replacedSubtitleId
 		});
 
-		logger.info('Subtitle downloaded', {
-			subtitleId,
-			provider: result.providerName,
-			language: normalizedLanguage,
-			wasUpgrade
-		});
+		logger.info(
+			{
+				subtitleId,
+				provider: result.providerName,
+				language: normalizedLanguage,
+				wasUpgrade
+			},
+			'Subtitle downloaded'
+		);
 
 		return {
 			subtitleId,

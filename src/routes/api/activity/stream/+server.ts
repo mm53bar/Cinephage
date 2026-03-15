@@ -115,9 +115,7 @@ export const GET: RequestHandler = async () => {
 				lastSentStatus.set(queueItem.id, queueItem.status);
 				send('activity:new', activity);
 			} catch (error) {
-				logger.error('[ActivityStream] Failed to convert queue:added to activity', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error({ err: error }, '[ActivityStream] Failed to convert queue:added to activity');
 			}
 		};
 
@@ -164,9 +162,10 @@ export const GET: RequestHandler = async () => {
 				// Track status so we detect real changes next time
 				lastSentStatus.set(queueItem.id, queueItem.status);
 			} catch (error) {
-				logger.error('[ActivityStream] Failed to convert queue:updated to activity', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error(
+					{ err: error },
+					'[ActivityStream] Failed to convert queue:updated to activity'
+				);
 			}
 		};
 
@@ -178,9 +177,10 @@ export const GET: RequestHandler = async () => {
 				const activity = await queueItemToActivity(queueItem);
 				send('activity:updated', activity);
 			} catch (error) {
-				logger.error('[ActivityStream] Failed to convert queue:completed to activity', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error(
+					{ err: error },
+					'[ActivityStream] Failed to convert queue:completed to activity'
+				);
 			}
 		};
 
@@ -192,9 +192,10 @@ export const GET: RequestHandler = async () => {
 				const activity = await queueItemToActivity(queueItem);
 				send('activity:updated', activity);
 			} catch (error) {
-				logger.error('[ActivityStream] Failed to convert queue:imported to activity', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error(
+					{ err: error },
+					'[ActivityStream] Failed to convert queue:imported to activity'
+				);
 			}
 		};
 
@@ -210,9 +211,7 @@ export const GET: RequestHandler = async () => {
 					statusReason: getQueueErrorFromPayload(data) ?? activity.statusReason
 				});
 			} catch (error) {
-				logger.error('[ActivityStream] Failed to convert queue:failed to activity', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error({ err: error }, '[ActivityStream] Failed to convert queue:failed to activity');
 			}
 		};
 
@@ -237,9 +236,7 @@ export const GET: RequestHandler = async () => {
 					send('activity:seed', seedActivities);
 				}
 			} catch (error) {
-				logger.error('[ActivityStream] Failed to send initial queue items', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error({ err: error }, '[ActivityStream] Failed to send initial queue items');
 			}
 		};
 

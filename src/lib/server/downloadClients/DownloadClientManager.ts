@@ -7,7 +7,9 @@ import { db } from '$lib/server/db';
 import { downloadClients as downloadClientsTable } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 import type { IDownloadClient, DownloadClientConfig } from './core/interfaces';
 import type {
@@ -248,7 +250,7 @@ export class DownloadClientManager {
 			updatedAt: now
 		});
 
-		logger.info('Download client created', { id, name: input.name });
+		logger.info({ id, name: input.name }, 'Download client created');
 
 		const created = await this.getClient(id);
 		if (!created) {
@@ -310,7 +312,7 @@ export class DownloadClientManager {
 		}
 		this.clientInstances.delete(id);
 
-		logger.info('Download client updated', { id });
+		logger.info({ id }, 'Download client updated');
 
 		const updated = await this.getClient(id);
 		if (!updated) {
@@ -326,7 +328,7 @@ export class DownloadClientManager {
 	async deleteClient(id: string): Promise<void> {
 		await db.delete(downloadClientsTable).where(eq(downloadClientsTable.id, id));
 		this.clientInstances.delete(id);
-		logger.info('Download client deleted', { id });
+		logger.info({ id }, 'Download client deleted');
 	}
 
 	/**
@@ -643,10 +645,13 @@ export class DownloadClientManager {
 				this.downloadClientHealthColumnsAvailable = false;
 				return;
 			}
-			logger.debug('Failed to record download client success state', {
-				id,
-				error: this.toErrorMessage(error)
-			});
+			logger.debug(
+				{
+					id,
+					error: this.toErrorMessage(error)
+				},
+				'Failed to record download client success state'
+			);
 		}
 	}
 
@@ -693,10 +698,13 @@ export class DownloadClientManager {
 				this.downloadClientHealthColumnsAvailable = false;
 				return;
 			}
-			logger.debug('Failed to record download client failure state', {
-				id,
-				error: this.toErrorMessage(error)
-			});
+			logger.debug(
+				{
+					id,
+					error: this.toErrorMessage(error)
+				},
+				'Failed to record download client failure state'
+			);
 		}
 	}
 

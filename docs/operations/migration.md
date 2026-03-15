@@ -14,14 +14,14 @@ Current deployment tags:
 
 ## Volume Mount Migration (/app/data → /config)
 
-**Applies to:** Users upgrading from versions before January 2026 that used `/app/data` and `/app/logs` mounts.
+**Applies to:** Users upgrading from versions before January 2026 that used `/app/data` mounts.
 
 ### Why This Change?
 
 The `/config` consolidation:
 
 - Prevents accidentally overwriting application code by mounting `/app`
-- Simplifies volume management (one mount instead of two)
+- Simplifies volume management and keeps app state under a single root
 - Aligns with Docker best practices
 - Reduces risk of permission issues
 
@@ -33,7 +33,7 @@ The container entrypoint automatically detects and migrates your data.
 
 **Step 1:** Update `docker-compose.yaml`
 
-Add the `/config` mount **while keeping** the old mounts temporarily:
+Add the `/config` mount **while keeping** the old data mount temporarily:
 
 ```yaml
 services:
@@ -54,7 +54,6 @@ services:
     volumes:
       - ./config:/config # NEW: Add this line
       - ./data:/app/data # KEEP temporarily for migration
-      - ./logs:/app/logs # KEEP temporarily for migration
       - /path/to/media:/media # REQUIRED: Your media library
       - /path/to/downloads:/downloads # REQUIRED: Download client output folder
 ```
@@ -69,7 +68,6 @@ The entrypoint will detect both old and new mounts and automatically copy your d
 
 ```
 Migrating data from /app/data to /config/data...
-Migrating logs from /app/logs to /config/logs...
 ```
 
 **Step 3:** Verify migration
@@ -86,16 +84,13 @@ Verify your data is present:
 # Check database
 ls -lh ./config/data/cinephage.db
 
-# Check logs
-ls -lh ./config/logs/
-
 # Check indexer definitions
 ls -lh ./config/data/indexers/definitions/
 ```
 
 **Step 4:** Remove old mounts
 
-Once verified, update `docker-compose.yaml` to remove the legacy mounts:
+Once verified, update `docker-compose.yaml` to remove the legacy data mount:
 
 ```yaml
 services:
@@ -172,7 +167,6 @@ services:
     volumes:
       - ./config:/config
       - ./data:/app/data # Keep for migration
-      - ./logs:/app/logs # Keep for migration
       - /path/to/media:/media # REQUIRED: Your media library
       - /path/to/downloads:/downloads # REQUIRED: Download client output folder
 ```
@@ -232,9 +226,8 @@ docker compose down
 **Step 2:** Create config directory and copy data:
 
 ```bash
-mkdir -p ./config/data ./config/logs
+mkdir -p ./config/data
 cp -a ./data/. ./config/data/
-cp -a ./logs/. ./config/logs/
 ```
 
 **Step 3:** Fix ownership (replace with your actual UID:GID):
@@ -268,8 +261,6 @@ services:
       - BETTER_AUTH_URL=http://localhost:3000 # Auth callback/redirect base URL
     volumes:
       - ./config:/config
-      - ./data:/app/data # Keep for migration
-      - ./logs:/app/logs # Keep for migration
       - /path/to/media:/media # REQUIRED: Your media library
       - /path/to/downloads:/downloads # REQUIRED: Download client output folder
 ```
@@ -321,8 +312,7 @@ docker inspect cinephage | grep -A 10 Mounts
 │   ├── indexers/
 │   │   └── definitions/
 │   └── nzb_cache/
-└── logs/
-    └── cinephage.log
+└── cache/
 ```
 
 If structure is wrong, stop container and manually reorganize:
@@ -437,12 +427,11 @@ tar -czf cinephage-backup-$(date +%Y%m%d).tar.gz ./config
 image: ghcr.io/moldytaint/cinephage:v1.2.3
 ```
 
-**Step 4:** If rolling back to pre-/config version, restore old volume mounts:
+**Step 4:** If rolling back to pre-/config version, restore old data volume mounts:
 
 ```yaml
 volumes:
   - ./data:/app/data
-  - ./logs:/app/logs
   - /path/to/media:/media
   - /path/to/downloads:/downloads
 ```

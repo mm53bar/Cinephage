@@ -7,7 +7,9 @@ import { createHash } from 'crypto';
 import type { FilterBlock } from '../schema/yamlDefinition';
 import type { TemplateEngine } from './TemplateEngine';
 import { createSafeRegex, safeMatch, safeReplace } from './safeRegex';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 export type FilterFunction = (
 	data: string,
@@ -608,17 +610,20 @@ const FILTERS: Record<string, FilterFunction> = {
 
 	// Debug
 	hexdump: (data) => {
-		logger.debug('[hexdump]', {
-			data: Array.from(data)
-				.map((c) => c.charCodeAt(0).toString(16).padStart(2, '0'))
-				.join(' ')
-		});
+		logger.debug(
+			{
+				data: Array.from(data)
+					.map((c) => c.charCodeAt(0).toString(16).padStart(2, '0'))
+					.join(' ')
+			},
+			'[hexdump]'
+		);
 		return data;
 	},
 
 	strdump: (data, args) => {
 		const tag = args ? ` (${args})` : '';
-		logger.debug(`[strdump${tag}]`, { data: JSON.stringify(data) });
+		logger.debug({ data: JSON.stringify(data) }, `[strdump${tag}]`);
 		return data;
 	},
 
@@ -947,9 +952,12 @@ const FILTERS: Record<string, FilterFunction> = {
 		try {
 			return createHash('md5').update(data).digest('hex');
 		} catch (error) {
-			logger.warn('MD5 hash failed', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'MD5 hash failed'
+			);
 			return data;
 		}
 	},
@@ -959,9 +967,12 @@ const FILTERS: Record<string, FilterFunction> = {
 		try {
 			return createHash('sha1').update(data).digest('hex');
 		} catch (error) {
-			logger.warn('SHA1 hash failed', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'SHA1 hash failed'
+			);
 			return data;
 		}
 	}
@@ -991,14 +1002,14 @@ export class FilterEngine {
 	applyFilter(data: string, filter: FilterBlock): string {
 		const filterFn = FILTERS[filter.name.toLowerCase()];
 		if (!filterFn) {
-			logger.warn(`Unknown filter: ${filter.name}`, { filter: filter.name });
+			logger.warn({ filter: filter.name }, `Unknown filter: ${filter.name}`);
 			return data;
 		}
 
 		try {
 			return filterFn(data, filter.args, this.templateEngine);
 		} catch (error) {
-			logger.error(`Filter ${filter.name} failed`, error, { filter: filter.name });
+			logger.error({ err: error, ...{ filter: filter.name } }, `Filter ${filter.name} failed`);
 			return data;
 		}
 	}

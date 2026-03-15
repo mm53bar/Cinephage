@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { UnifiedTask } from '$lib/server/tasks/UnifiedTaskRegistry';
 	import type { TaskHistoryEntry } from '$lib/types/task';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import TaskIntervalCell from './TaskIntervalCell.svelte';
 
 	interface Props {
@@ -77,7 +78,7 @@
 		try {
 			await onRunTask(task.id);
 		} catch (error) {
-			console.error('Task failed:', error);
+			toasts.error(error instanceof Error ? error.message : 'Task failed');
 		}
 	}
 
@@ -87,7 +88,7 @@
 		try {
 			await onCancelTask(task.id);
 		} catch (error) {
-			console.error('Failed to cancel task:', error);
+			toasts.error(error instanceof Error ? error.message : 'Failed to cancel task');
 		}
 	}
 

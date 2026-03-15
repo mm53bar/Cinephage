@@ -1,4 +1,6 @@
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 import { tmdb } from '$lib/server/tmdb';
 import {
 	getMovieAvailabilityLevel,
@@ -33,10 +35,13 @@ async function getReleaseInfoMap(tmdbIds: number[]): Promise<Map<number, MovieRe
 				const info = await tmdb.getMovieReleaseInfo(tmdbId);
 				return [tmdbId, info] as const;
 			} catch (error) {
-				logger.warn('[Dashboard] Failed to fetch TMDB movie release info', {
-					tmdbId,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						tmdbId,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'[Dashboard] Failed to fetch TMDB movie release info'
+				);
 				return [tmdbId, null] as const;
 			}
 		})

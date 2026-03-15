@@ -84,14 +84,17 @@ export class QualityFilter {
 		if (profileId) {
 			const hadCached = this.profilesCache.has(profileId);
 			this.profilesCache.delete(profileId);
-			logger.debug('[QualityFilter] Cache cleared for profile', {
-				profileId,
-				wasCached: hadCached
-			});
+			logger.debug(
+				{
+					profileId,
+					wasCached: hadCached
+				},
+				'[QualityFilter] Cache cleared for profile'
+			);
 		} else {
 			const count = this.profilesCache.size;
 			this.profilesCache.clear();
-			logger.debug('[QualityFilter] All profile cache cleared', { count });
+			logger.debug({ count }, '[QualityFilter] All profile cache cleared');
 		}
 		this.defaultProfile = null;
 	}
@@ -112,11 +115,14 @@ export class QualityFilter {
 		// Check cache first
 		if (this.profilesCache.has(id)) {
 			const cached = this.profilesCache.get(id)!;
-			logger.debug('[QualityFilter.getProfile] Cache hit', {
-				id,
-				cachedName: cached.name,
-				formatScoresCount: Object.keys(cached.formatScores).length
-			});
+			logger.debug(
+				{
+					id,
+					cachedName: cached.name,
+					formatScoresCount: Object.keys(cached.formatScores).length
+				},
+				'[QualityFilter.getProfile] Cache hit'
+			);
 			return cached;
 		}
 
@@ -126,15 +132,18 @@ export class QualityFilter {
 		// Try database first (custom profiles or seeded built-in profiles)
 		const result = await db.select().from(scoringProfiles).where(eq(scoringProfiles.id, id)).get();
 
-		logger.debug('[QualityFilter.getProfile] Loading profile', {
-			id,
-			foundInDb: !!result,
-			dbFormatScoresCount: result?.formatScores ? Object.keys(result.formatScores).length : 0,
-			dbFormatScoresSample: result?.formatScores
-				? Object.keys(result.formatScores).slice(0, 3)
-				: [],
-			isBuiltIn: !!builtIn
-		});
+		logger.debug(
+			{
+				id,
+				foundInDb: !!result,
+				dbFormatScoresCount: result?.formatScores ? Object.keys(result.formatScores).length : 0,
+				dbFormatScoresSample: result?.formatScores
+					? Object.keys(result.formatScores).slice(0, 3)
+					: [],
+				isBuiltIn: !!builtIn
+			},
+			'[QualityFilter.getProfile] Loading profile'
+		);
 
 		if (result) {
 			let profile = this.mapDbToProfile(result);

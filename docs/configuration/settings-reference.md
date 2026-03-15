@@ -31,10 +31,7 @@ If deploying without Docker, or if you want to pass the environment variables to
 
 | Variable            | Default                    | Description                                        |
 | ------------------- | -------------------------- | -------------------------------------------------- |
-| `LOG_DIR`           | `./logs`                   | Log file directory                                 |
-| `LOG_MAX_SIZE_MB`   | `10`                       | Max log file size before rotation                  |
-| `LOG_MAX_FILES`     | `5`                        | Number of rotated logs to keep                     |
-| `LOG_TO_FILE`       | `true`                     | Enable/disable file logging                        |
+| `LOG_LEVEL`         | Dev: `debug`, Prod: `info` | Minimum log level emitted to stdout                |
 | `LOG_INCLUDE_STACK` | Dev: `true`, Prod: `false` | Force include/suppress error stack traces          |
 | `LOG_SENSITIVE`     | `false`                    | Set `true` to bypass secret redaction (debug only) |
 
@@ -156,7 +153,6 @@ Configure file and folder naming templates.
 | ---------------------------- | ------------------------------- |
 | `data/cinephage.db`          | SQLite database                 |
 | `data/indexers/definitions/` | Custom YAML indexer definitions |
-| `logs/`                      | Application logs                |
 | `.env`                       | Environment configuration       |
 
 ---

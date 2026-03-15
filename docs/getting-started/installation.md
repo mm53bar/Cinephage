@@ -102,7 +102,7 @@ All configuration is done via environment variables in `docker-compose.yaml`:
 
 Data, configuration, and logs are stored under `/config` in the container. Mount a host directory to `/config` to persist them. Avoid mounting `/app`, which contains the application files.
 
-> **Upgrade note:** If you previously mounted `/app/data` and `/app/logs`, run one start with both the old mounts **and** `/config` mounted. The entrypoint will copy existing data/logs into `/config`, then you can remove the old mounts. If migration fails due to permissions, rerun once as root (`user: 0:0` or `--user 0:0`) and set `PUID`/`PGID`.
+> **Upgrade note:** If you previously mounted `/app/data`, run one start with both the old mount **and** `/config` mounted. The entrypoint will copy existing data into `/config`, then you can remove the old mount. If migration fails due to permissions, rerun once as root (`user: 0:0` or `--user 0:0`) and set `PUID`/`PGID`.
 
 #### Entrypoint Ownership (Advanced)
 
@@ -236,7 +236,7 @@ Open http://localhost:3000 in your browser. You should see the Cinephage interfa
 If the page doesn't load:
 
 - Check that port 3000 is not in use by another application
-- Review the logs (`logs/` directory or `docker logs cinephage`)
+- Review the service logs (`docker logs cinephage` or `journalctl -u cinephage`)
 - See [Troubleshooting](../support/troubleshooting.md) for common issues
 
 ---

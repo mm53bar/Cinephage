@@ -180,13 +180,16 @@ export const POST: RequestHandler = async ({ params }) => {
 					throw clientLookupError;
 				}
 
-				logger.warn('Import retry probe failed; will use existing queue paths if available', {
-					queueItemId: id,
-					error:
-						clientLookupError instanceof Error
-							? clientLookupError.message
-							: String(clientLookupError)
-				});
+				logger.warn(
+					{
+						queueItemId: id,
+						error:
+							clientLookupError instanceof Error
+								? clientLookupError.message
+								: String(clientLookupError)
+					},
+					'Import retry probe failed; will use existing queue paths if available'
+				);
 			}
 
 			if (importPathAvailable) {
@@ -248,11 +251,14 @@ export const POST: RequestHandler = async ({ params }) => {
 						? 'Import retry queued. Waiting for download path to become available.'
 						: 'Import retry initiated';
 
-				logger.info('Import retry initiated for failed queue item', {
-					queueItemId: id,
-					importResult: importResult.status,
-					source: completedClientDownload ? 'client-completed' : 'stored-queue-path'
-				});
+				logger.info(
+					{
+						queueItemId: id,
+						importResult: importResult.status,
+						source: completedClientDownload ? 'client-completed' : 'stored-queue-path'
+					},
+					'Import retry initiated for failed queue item'
+				);
 
 				return json({
 					success: true,
@@ -279,12 +285,15 @@ export const POST: RequestHandler = async ({ params }) => {
 		if (clientInstance.retryDownload && queueItem.downloadId) {
 			try {
 				newInfoHash = await clientInstance.retryDownload(queueItem.downloadId);
-				logger.info('Native retry succeeded', { id, newInfoHash });
+				logger.info({ id, newInfoHash }, 'Native retry succeeded');
 			} catch (retryError) {
-				logger.warn('Native retry failed, falling back to re-add', {
-					id,
-					error: retryError instanceof Error ? retryError.message : String(retryError)
-				});
+				logger.warn(
+					{
+						id,
+						error: retryError instanceof Error ? retryError.message : String(retryError)
+					},
+					'Native retry failed, falling back to re-add'
+				);
 				// Fall through to re-add approach
 			}
 		}

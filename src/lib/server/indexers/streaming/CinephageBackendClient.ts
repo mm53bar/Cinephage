@@ -2,7 +2,7 @@ import { logger } from '$lib/logging';
 import type { StreamSource, StreamSubtitle, StreamType } from '$lib/server/streaming/types';
 import { getStreamingIndexerSettings } from '$lib/server/streaming/settings';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 const DEFAULT_API_BASE_URL = 'https://api.cinephage.net';
 
@@ -345,14 +345,17 @@ export class CinephageBackendClient {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			logger.error('Cinephage backend request failed', {
-				error: message,
-				tmdbId: params.tmdbId,
-				type: params.type,
-				season: params.season,
-				episode: params.episode,
-				...streamLog
-			});
+			logger.error(
+				{
+					error: message,
+					tmdbId: params.tmdbId,
+					type: params.type,
+					season: params.season,
+					episode: params.episode,
+					...streamLog
+				},
+				'Cinephage backend request failed'
+			);
 
 			return {
 				success: false,

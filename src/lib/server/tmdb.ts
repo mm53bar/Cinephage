@@ -11,7 +11,9 @@ import type {
 	PersonCombinedCredits
 } from '$lib/types/tmdb';
 import { TMDB } from '$lib/config/constants';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 import { tmdbCache, getCacheKey } from './tmdb-cache';
 
 // In-flight request deduplication - prevents concurrent requests for the same endpoint
@@ -46,7 +48,7 @@ async function loadTmdbSettings(): Promise<{ apiKey: string; filters: GlobalTmdb
 					try {
 						_cachedFilters = JSON.parse(filtersSetting.value);
 					} catch (e) {
-						logger.error('Failed to parse global filters', e);
+						logger.error({ err: e }, 'Failed to parse global filters');
 					}
 				}
 				_settingsCacheTimestamp = Date.now();
@@ -92,7 +94,7 @@ export const tmdb = {
 			// Check if there's already an in-flight request for this endpoint
 			const inFlight = inFlightRequests.get(cacheKey);
 			if (inFlight) {
-				logger.debug('Deduplicating in-flight TMDB request', { path });
+				logger.debug({ path }, 'Deduplicating in-flight TMDB request');
 				return inFlight;
 			}
 		}

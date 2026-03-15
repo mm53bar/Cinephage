@@ -16,10 +16,13 @@ export const GET: RequestHandler = async () => {
 		// This prevents missing events that fire during setup
 
 		const onStarted = (data: LogoDownloadProgress) => {
-			logger.info('[LogoDownloadStream] Download started event', {
-				total: data.total,
-				status: data.status
-			});
+			logger.info(
+				{
+					total: data.total,
+					status: data.status
+				},
+				'[LogoDownloadStream] Download started event'
+			);
 			send('logos:started', data);
 		};
 
@@ -28,17 +31,23 @@ export const GET: RequestHandler = async () => {
 		};
 
 		const onCompleted = (data: LogoDownloadProgress) => {
-			logger.info('[LogoDownloadStream] Download completed event', {
-				downloaded: data.downloaded,
-				total: data.total
-			});
+			logger.info(
+				{
+					downloaded: data.downloaded,
+					total: data.total
+				},
+				'[LogoDownloadStream] Download completed event'
+			);
 			send('logos:completed', data);
 		};
 
 		const onError = (data: LogoDownloadProgress) => {
-			logger.error('[LogoDownloadStream] Download error event', {
-				error: data.error
-			});
+			logger.error(
+				{
+					error: data.error
+				},
+				'[LogoDownloadStream] Download error event'
+			);
 			send('logos:error', data);
 		};
 
@@ -50,11 +59,14 @@ export const GET: RequestHandler = async () => {
 
 		// NOW get and send current status (after listeners are registered)
 		const currentStatus: LogoDownloadProgress = service.progress;
-		logger.info('[LogoDownloadStream] Client connected, sending status', {
-			status: currentStatus.status,
-			downloaded: currentStatus.downloaded,
-			total: currentStatus.total
-		});
+		logger.info(
+			{
+				status: currentStatus.status,
+				downloaded: currentStatus.downloaded,
+				total: currentStatus.total
+			},
+			'[LogoDownloadStream] Client connected, sending status'
+		);
 		send('logos:status', currentStatus);
 
 		// Return cleanup function

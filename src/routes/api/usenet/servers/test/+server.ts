@@ -39,18 +39,18 @@ export const POST: RequestHandler = async (event) => {
 
 	const { host, port, useSsl, username, password } = result.data;
 
-	logger.info('[NNTP Test] Testing connection', { host, port, useSsl });
+	logger.info({ host, port, useSsl }, '[NNTP Test] Testing connection');
 
 	const testResult = await testNntpConnection(host, port, useSsl ?? true, username, password);
 
 	if (testResult.success) {
-		logger.info('[NNTP Test] Connection successful', { host, greeting: testResult.greeting });
+		logger.info({ host, greeting: testResult.greeting }, '[NNTP Test] Connection successful');
 		return json({
 			success: true,
 			greeting: testResult.greeting
 		});
 	} else {
-		logger.warn('[NNTP Test] Connection failed', { host, error: testResult.error });
+		logger.warn({ host, error: testResult.error }, '[NNTP Test] Connection failed');
 		return json(
 			{
 				success: false,

@@ -5,7 +5,7 @@
 import { logger } from '$lib/logging';
 import type { StreamValidation, ExtractionResult } from '../types';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 // ============================================================================
 // Configuration
@@ -201,12 +201,15 @@ export class MultiLevelStreamCache {
 			createdAt: Date.now()
 		});
 
-		logger.debug('Cached stream resolution', {
-			key,
-			sourceCount: result.sources.length,
-			provider,
-			...streamLog
-		});
+		logger.debug(
+			{
+				key,
+				sourceCount: result.sources.length,
+				provider,
+				...streamLog
+			},
+			'Cached stream resolution'
+		);
 	}
 
 	// --------------------------------------------------------------------------
@@ -296,13 +299,16 @@ export class MultiLevelStreamCache {
 			createdAt: Date.now()
 		});
 
-		logger.debug('Added negative cache entry', {
-			key,
-			reason,
-			provider,
-			ttlMs: ttlMs ?? this.negativeTtl,
-			...streamLog
-		});
+		logger.debug(
+			{
+				key,
+				reason,
+				provider,
+				ttlMs: ttlMs ?? this.negativeTtl,
+				...streamLog
+			},
+			'Added negative cache entry'
+		);
 	}
 
 	/**
@@ -324,14 +330,17 @@ export class MultiLevelStreamCache {
 			createdAt: Date.now()
 		});
 
-		logger.debug('Added negative cache entry with failure type', {
-			key,
-			reason,
-			failureType,
-			provider,
-			ttlMs,
-			...streamLog
-		});
+		logger.debug(
+			{
+				key,
+				reason,
+				failureType,
+				provider,
+				ttlMs,
+				...streamLog
+			},
+			'Added negative cache entry with failure type'
+		);
 	}
 
 	/**
@@ -492,7 +501,7 @@ export class MultiLevelStreamCache {
 		}
 
 		if (cleaned > 0) {
-			logger.debug('Cache cleanup completed', { cleaned, ...streamLog });
+			logger.debug({ cleaned, ...streamLog }, 'Cache cleanup completed');
 		}
 	}
 

@@ -11,7 +11,9 @@
  * - Result: /mnt/storage/downloads/torrents/Movie.Name.2024/movie.mkv
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 
 /**
  * Path mapping configuration for a download client
@@ -106,12 +108,15 @@ export function mapClientPathToLocal(
 			const relativePath = normalizedClientPath.slice(normalizedRemote.length);
 			const mappedPath = joinMappedPath(normalizedLocal, relativePath);
 
-			logger.debug('Path mapped (completed folder)', {
-				clientPath,
-				clientBasePath,
-				localBasePath,
-				mappedPath
-			});
+			logger.debug(
+				{
+					clientPath,
+					clientBasePath,
+					localBasePath,
+					mappedPath
+				},
+				'Path mapped (completed folder)'
+			);
 
 			return mappedPath;
 		}
@@ -126,12 +131,15 @@ export function mapClientPathToLocal(
 			const relativePath = normalizedClientPath.slice(normalizedTempRemote.length);
 			const mappedPath = joinMappedPath(normalizedTempLocal, relativePath);
 
-			logger.debug('Path mapped (temp folder)', {
-				clientPath,
-				tempRemotePath,
-				tempLocalPath,
-				mappedPath
-			});
+			logger.debug(
+				{
+					clientPath,
+					tempRemotePath,
+					tempLocalPath,
+					mappedPath
+				},
+				'Path mapped (temp folder)'
+			);
 
 			return mappedPath;
 		}
@@ -194,11 +202,14 @@ export function mapClientPathToLocal(
 	// and append to local path
 	const lastPart = clientParts[clientParts.length - 1];
 	if (lastPart && !normalizedLocal.endsWith(lastPart)) {
-		logger.warn('Could not determine path mapping, using best guess', {
-			clientPath,
-			localBasePath,
-			result: `${normalizedLocal}/${lastPart}`
-		});
+		logger.warn(
+			{
+				clientPath,
+				localBasePath,
+				result: `${normalizedLocal}/${lastPart}`
+			},
+			'Could not determine path mapping, using best guess'
+		);
 		return `${normalizedLocal}/${lastPart}`;
 	}
 
@@ -231,12 +242,15 @@ export function mapClientPathToLocalWithResult(
 			const relativePath = normalizedClientPath.slice(normalizedRemote.length);
 			const mappedPath = joinMappedPath(normalizedLocal, relativePath);
 
-			logger.debug('Path mapped (completed folder)', {
-				clientPath,
-				completeRemotePath,
-				completeLocalPath,
-				mappedPath
-			});
+			logger.debug(
+				{
+					clientPath,
+					completeRemotePath,
+					completeLocalPath,
+					mappedPath
+				},
+				'Path mapped (completed folder)'
+			);
 
 			return { path: mappedPath, exact: true };
 		}
@@ -251,12 +265,15 @@ export function mapClientPathToLocalWithResult(
 			const relativePath = normalizedClientPath.slice(normalizedTempRemote.length);
 			const mappedPath = joinMappedPath(normalizedTempLocal, relativePath);
 
-			logger.debug('Path mapped (temp folder)', {
-				clientPath,
-				tempRemotePath,
-				tempLocalPath,
-				mappedPath
-			});
+			logger.debug(
+				{
+					clientPath,
+					tempRemotePath,
+					tempLocalPath,
+					mappedPath
+				},
+				'Path mapped (temp folder)'
+			);
 
 			return { path: mappedPath, exact: true };
 		}
@@ -311,11 +328,14 @@ export function mapClientPathToLocalWithResult(
 	const lastPart = clientParts[clientParts.length - 1];
 	if (lastPart && !normalizedLocal.endsWith(lastPart)) {
 		const guessedPath = `${normalizedLocal}/${lastPart}`;
-		logger.warn('Could not determine path mapping, using best guess', {
-			clientPath,
-			completeLocalPath,
-			result: guessedPath
-		});
+		logger.warn(
+			{
+				clientPath,
+				completeLocalPath,
+				result: guessedPath
+			},
+			'Could not determine path mapping, using best guess'
+		);
 		return {
 			path: guessedPath,
 			exact: false,

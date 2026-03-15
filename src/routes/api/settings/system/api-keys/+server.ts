@@ -5,6 +5,7 @@ import {
 	ensureDefaultApiKeysForUser,
 	getManagedApiKeysForRequest
 } from '$lib/server/auth/index.js';
+import { logger } from '$lib/logging';
 
 // POST /api/settings/system/api-keys - Auto-generate Main and Media Streaming API keys
 export const POST: RequestHandler = async (event) => {
@@ -25,7 +26,7 @@ export const POST: RequestHandler = async (event) => {
 			data: results
 		});
 	} catch (error) {
-		console.error('Error creating API keys:', error);
+		logger.error({ err: error, component: 'SystemApiKeysApi' }, 'Error creating API keys');
 		return json({ error: 'Failed to create API keys' }, { status: 500 });
 	}
 };
@@ -46,7 +47,7 @@ export const GET: RequestHandler = async (event) => {
 			data: [apiKeysResult.mainApiKey, apiKeysResult.streamingApiKey].filter(Boolean)
 		});
 	} catch (error) {
-		console.error('Error listing API keys:', error);
+		logger.error({ err: error, component: 'SystemApiKeysApi' }, 'Error listing API keys');
 		return json({ error: 'Failed to list API keys' }, { status: 500 });
 	}
 };

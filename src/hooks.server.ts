@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { building } from '$app/environment';
 
 import { AUTH_BASE_PATH } from '$lib/auth/config.js';
-import { logger } from '$lib/logging';
+import { createRequestLogger, logger, runWithLogContext } from '$lib/logging';
 import { getLibraryScheduler, librarySchedulerService } from '$lib/server/library/index.js';
 import { isFFprobeAvailable, getFFprobeVersion } from '$lib/server/library/ffprobe.js';
 import { getDownloadMonitor } from '$lib/server/downloadClients/monitoring';
@@ -107,6 +107,10 @@ type AuthSessionRecord = {
 	updatedAt?: string | Date | null;
 };
 
+function createSupportId(): string {
+	return randomUUID().split('-')[0] ?? randomUUID();
+}
+
 function toIntegerFlag(value: boolean | number | null | undefined): number | null {
 	if (typeof value === 'number') {
 		return value;
@@ -205,9 +209,12 @@ async function initializeServices(): Promise<void> {
 			await initializeDatabase();
 			const updatedStreamingKeys = await ensureStreamingApiKeyRateLimit();
 			if (updatedStreamingKeys > 0) {
-				logger.info('Updated streaming API key rate limits', {
-					updatedKeys: updatedStreamingKeys
-				});
+				logger.info(
+					{
+						updatedKeys: updatedStreamingKeys
+					},
+					'Updated streaming API key rate limits'
+				);
 			}
 			logger.info('Initializing background services...');
 
@@ -355,438 +362,456 @@ const customHandler: Handle = async ({ event, resolve }) => {
 	const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 	const clientId = event.request.headers.get('x-correlation-id');
 	const correlationId = clientId && UUID_REGEX.test(clientId) ? clientId : randomUUID();
+	const supportId = createSupportId();
+	const requestLogger = createRequestLogger({
+		requestId: correlationId,
+		correlationId,
+		supportId,
+		logDomain: 'http',
+		method: event.request.method,
+		path: event.url.pathname
+	});
 
 	// Attach to locals for use in routes
 	event.locals.correlationId = correlationId;
+	event.locals.requestId = correlationId;
+	event.locals.supportId = supportId;
+	event.locals.logger = requestLogger;
 	const pathname = event.url.pathname;
 
-	function requiresStreamingApiKey(path: string): boolean {
-		// Live TV endpoints
-		if (path === '/api/livetv/playlist.m3u' || path.startsWith('/api/livetv/playlist.m3u/')) {
-			return true;
-		}
-		if (path === '/api/livetv/epg.xml' || path.startsWith('/api/livetv/epg.xml/')) {
-			return true;
-		}
-		if (path.startsWith('/api/livetv/stream/')) {
-			return true;
-		}
+	return runWithLogContext(
+		{
+			requestId: correlationId,
+			correlationId,
+			supportId,
+			logDomain: 'http',
+			method: event.request.method,
+			path: pathname
+		},
+		async () => {
+			function requiresStreamingApiKey(path: string): boolean {
+				// Live TV endpoints
+				if (path === '/api/livetv/playlist.m3u' || path.startsWith('/api/livetv/playlist.m3u/')) {
+					return true;
+				}
+				if (path === '/api/livetv/epg.xml' || path.startsWith('/api/livetv/epg.xml/')) {
+					return true;
+				}
+				if (path.startsWith('/api/livetv/stream/')) {
+					return true;
+				}
 
-		// Streaming endpoints (Cinephage Streamer .strm files)
-		if (path.startsWith('/api/streaming/resolve/')) {
-			return true;
-		}
-		if (path.startsWith('/api/streaming/usenet/')) {
-			return true;
-		}
-		// Proxy endpoints for HLS segments
-		if (path.startsWith('/api/streaming/proxy/')) {
-			return true;
-		}
+				// Streaming endpoints (Cinephage Streamer .strm files)
+				if (path.startsWith('/api/streaming/resolve/')) {
+					return true;
+				}
+				if (path.startsWith('/api/streaming/usenet/')) {
+					return true;
+				}
+				// Proxy endpoints for HLS segments
+				if (path.startsWith('/api/streaming/proxy/')) {
+					return true;
+				}
 
-		return false;
-	}
-
-	const isStreamingApiRoute = requiresStreamingApiKey(pathname);
-
-	function isHealthRoute(path: string): boolean {
-		if (path === '/health' || path.startsWith('/health/')) {
-			return true;
-		}
-		if (path === '/api/health' || path.startsWith('/api/health/')) {
-			return true;
-		}
-		if (path === '/api/ready' || path.startsWith('/api/ready/')) {
-			return true;
-		}
-		return false;
-	}
-
-	// Fetch session from Better Auth - check API key first, then cookie
-	let session = null;
-	let apiKey = null;
-
-	if (!isStreamingApiRoute) {
-		// Check for API key in header
-		const apiKeyHeader = event.request.headers.get('x-api-key');
-		if (apiKeyHeader) {
-			try {
-				// Get session from API key
-				session = await auth.api.getSession({
-					headers: new Headers({ 'x-api-key': apiKeyHeader })
-				});
-				apiKey = apiKeyHeader;
-			} catch {
-				// Invalid API key, continue to cookie auth
-			}
-		}
-
-		// If no API key session, try cookie-based session
-		if (!session) {
-			session = await auth.api.getSession({
-				headers: event.request.headers
-			});
-		}
-
-		if (session) {
-			if (
-				session.user?.id &&
-				session.user.role !== 'admin' &&
-				(await repairCurrentUserAdminRole(session.user.id))
-			) {
-				session = {
-					...session,
-					user: {
-						...session.user,
-						role: 'admin'
-					}
-				};
+				return false;
 			}
 
-			setAuthenticatedLocals(event, session, apiKey);
-		} else {
-			clearAuthenticatedLocals(event);
-		}
-	} else {
-		clearAuthenticatedLocals(event);
-	}
+			const isStreamingApiRoute = requiresStreamingApiKey(pathname);
 
-	// Check if setup is complete
-	const setupComplete = await isSetupComplete();
-
-	// Auth routes are already handled by authHandler
-	if (pathname.startsWith(AUTH_BASE_PATH)) {
-		return resolve(event);
-	}
-
-	/**
-	 * Check if route is public (does not require authentication)
-	 * Public routes:
-	 * - /login - Login page
-	 * - /api/auth/* - Better Auth routes (login/logout/session management)
-	 * - /api/health - Health check endpoint
-	 * - /api/ready - Readiness endpoint
-	 * - /health - Legacy health endpoint (redirects to /api/health)
-	 * All other routes require authentication
-	 * Note: Live TV and Streaming endpoints require API key authentication (see requiresStreamingApiKey)
-	 */
-	function isPublicRoute(path: string): boolean {
-		// Login page
-		if (path === '/login' || path.startsWith('/login/')) {
-			return true;
-		}
-
-		// Better Auth routes (handles its own auth)
-		if (path.startsWith(AUTH_BASE_PATH)) {
-			return true;
-		}
-
-		// Health/readiness endpoints
-		if (isHealthRoute(path)) {
-			return true;
-		}
-
-		return false;
-	}
-
-	// Check if route requires Media Streaming API Key authentication
-	if (isStreamingApiRoute) {
-		// Get API key from query parameter (for .strm files) or header (for API clients)
-		const url = new URL(event.request.url);
-		const apiKeyFromQuery = url.searchParams.get('api_key');
-		const apiKeyFromHeader = event.request.headers.get('x-api-key');
-		const apiKey = apiKeyFromQuery || apiKeyFromHeader;
-
-		if (!apiKey) {
-			// No API key provided - reject request
-			return json(
-				{
-					success: false,
-					error: 'API key required',
-					code: 'API_KEY_REQUIRED'
-				},
-				{
-					status: 401,
-					headers: {
-						'x-correlation-id': correlationId,
-						...BASE_SECURITY_HEADERS
-					}
+			function isHealthRoute(path: string): boolean {
+				if (path === '/health' || path.startsWith('/health/')) {
+					return true;
 				}
-			);
-		}
-
-		// Validate the API key using Better Auth
-		try {
-			// First verify the key has streaming permissions (not just any valid key)
-			const verifyResult = await auth.api.verifyApiKey({
-				body: {
-					key: apiKey,
-					permissions: {
-						livetv: ['*']
-					}
+				if (path === '/api/health' || path.startsWith('/api/health/')) {
+					return true;
 				}
-			});
-
-			if (!verifyResult.valid) {
-				// Log for migration detection - Main API key attempting streaming access
-				logger.warn('[Auth] Main API key attempted to access streaming endpoint', {
-					correlationId,
-					endpoint: pathname,
-					error: verifyResult.error?.message || 'Invalid permissions'
-				});
-
-				return json(
-					{
-						success: false,
-						error: 'Unauthorized',
-						code: 'UNAUTHORIZED'
-					},
-					{
-						status: 401,
-						headers: {
-							'x-correlation-id': correlationId,
-							...BASE_SECURITY_HEADERS
-						}
-					}
-				);
+				if (path === '/api/ready' || path.startsWith('/api/ready/')) {
+					return true;
+				}
+				return false;
 			}
 
-			// Streaming routes do not rely on a full Better Auth session.
-			// Avoid fetching one here so API-key validation is only counted once.
-			event.locals.apiKey = apiKey;
-			event.locals.apiKeyPermissions = verifyResult.key?.permissions || null;
-		} catch (error) {
-			logger.error('[Auth] API key validation error', {
-				correlationId,
-				endpoint: pathname,
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			// Fetch session from Better Auth - check API key first, then cookie
+			let session = null;
+			let apiKey = null;
 
-			return json(
-				{
-					success: false,
-					error: 'API key validation failed',
-					code: 'INVALID_API_KEY'
-				},
-				{
-					status: 401,
-					headers: {
-						'x-correlation-id': correlationId,
-						...BASE_SECURITY_HEADERS
+			if (!isStreamingApiRoute) {
+				// Check for API key in header
+				const apiKeyHeader = event.request.headers.get('x-api-key');
+				if (apiKeyHeader) {
+					try {
+						// Get session from API key
+						session = await auth.api.getSession({
+							headers: new Headers({ 'x-api-key': apiKeyHeader })
+						});
+						apiKey = apiKeyHeader;
+					} catch {
+						// Invalid API key, continue to cookie auth
 					}
 				}
-			);
-		}
-	} else {
-		// If setup not complete, force to setup wizard
-		if (!setupComplete) {
-			// Keep health endpoints available for orchestrators during setup
-			if (isHealthRoute(pathname)) {
+
+				// If no API key session, try cookie-based session
+				if (!session) {
+					session = await auth.api.getSession({
+						headers: event.request.headers
+					});
+				}
+
+				if (session) {
+					if (
+						session.user?.id &&
+						session.user.role !== 'admin' &&
+						(await repairCurrentUserAdminRole(session.user.id))
+					) {
+						session = {
+							...session,
+							user: {
+								...session.user,
+								role: 'admin'
+							}
+						};
+					}
+
+					setAuthenticatedLocals(event, session, apiKey);
+				} else {
+					clearAuthenticatedLocals(event);
+				}
+			} else {
+				clearAuthenticatedLocals(event);
+			}
+
+			// Check if setup is complete
+			const setupComplete = await isSetupComplete();
+
+			// Auth routes are already handled by authHandler
+			if (pathname.startsWith(AUTH_BASE_PATH)) {
 				return resolve(event);
 			}
-			if (!pathname.startsWith('/setup')) {
-				throw redirect(302, '/setup');
+
+			/**
+			 * Check if route is public (does not require authentication)
+			 * Public routes:
+			 * - /login - Login page
+			 * - /api/auth/* - Better Auth routes (login/logout/session management)
+			 * - /api/health - Health check endpoint
+			 * - /api/ready - Readiness endpoint
+			 * - /health - Legacy health endpoint (redirects to /api/health)
+			 * All other routes require authentication
+			 * Note: Live TV and Streaming endpoints require API key authentication (see requiresStreamingApiKey)
+			 */
+			function isPublicRoute(path: string): boolean {
+				// Login page
+				if (path === '/login' || path.startsWith('/login/')) {
+					return true;
+				}
+
+				// Better Auth routes (handles its own auth)
+				if (path.startsWith(AUTH_BASE_PATH)) {
+					return true;
+				}
+
+				// Health/readiness endpoints
+				if (isHealthRoute(path)) {
+					return true;
+				}
+
+				return false;
 			}
-		}
-		// Setup is complete - require authentication
-		else {
-			// Check if route requires authentication
-			if (!event.locals.user && !isPublicRoute(pathname)) {
-				// API routes return 401, page routes redirect to login
-				if (pathname.startsWith('/api/')) {
+
+			// Check if route requires Media Streaming API Key authentication
+			if (isStreamingApiRoute) {
+				// Get API key from query parameter (for .strm files) or header (for API clients)
+				const url = new URL(event.request.url);
+				const apiKeyFromQuery = url.searchParams.get('api_key');
+				const apiKeyFromHeader = event.request.headers.get('x-api-key');
+				const apiKey = apiKeyFromQuery || apiKeyFromHeader;
+
+				if (!apiKey) {
+					// No API key provided - reject request
 					return json(
 						{
 							success: false,
-							error: 'Unauthorized',
-							code: 'UNAUTHORIZED'
+							error: 'API key required',
+							code: 'API_KEY_REQUIRED'
 						},
 						{
 							status: 401,
 							headers: {
 								'x-correlation-id': correlationId,
-								...SECURITY_HEADERS
+								'x-support-id': supportId,
+								...BASE_SECURITY_HEADERS
 							}
 						}
 					);
 				}
-				throw redirect(302, '/login');
-			}
-		}
-	}
 
-	// Apply rate limiting to API routes
-	if (pathname.startsWith('/api/')) {
-		const rateLimitResponse = checkApiRateLimit(event);
-		if (rateLimitResponse) {
-			return rateLimitResponse;
-		}
-	}
+				// Validate the API key using Better Auth
+				try {
+					// First verify the key has streaming permissions (not just any valid key)
+					const verifyResult = await auth.api.verifyApiKey({
+						body: {
+							key: apiKey,
+							permissions: {
+								livetv: ['*']
+							}
+						}
+					});
 
-	// Redirect away from setup/login if setup is complete and user is logged in
-	if (setupComplete && event.locals.user) {
-		if (pathname === '/setup' || pathname === '/login' || pathname.startsWith('/login/')) {
-			throw redirect(302, '/');
-		}
-	}
+					if (!verifyResult.valid) {
+						// Log for migration detection - Main API key attempting streaming access
+						requestLogger.warn(
+							{
+								logDomain: 'auth',
+								endpoint: pathname,
+								error: verifyResult.error?.message || 'Invalid permissions'
+							},
+							'[Auth] Main API key attempted to access streaming endpoint'
+						);
 
-	// Route standardization redirects
-	if (
-		pathname === '/movies' ||
-		pathname === '/movies/' ||
-		pathname === '/library/movie' ||
-		pathname === '/library/movie/'
-	) {
-		throw redirect(308, '/library/movies');
-	}
-	if (pathname === '/tv' || pathname === '/tv/') {
-		throw redirect(308, '/library/tv');
-	}
-	if (
-		pathname === '/movie' ||
-		pathname === '/movie/' ||
-		pathname === '/discover/movie' ||
-		pathname === '/discover/movie/' ||
-		pathname === '/discover/tv' ||
-		pathname === '/discover/tv/' ||
-		pathname === '/discover/person' ||
-		pathname === '/discover/person/' ||
-		pathname === '/person' ||
-		pathname === '/person/'
-	) {
-		throw redirect(308, '/discover');
-	}
-	if (pathname.startsWith('/movie/')) {
-		throw redirect(308, `/discover/movie/${pathname.slice('/movie/'.length)}`);
-	}
-	if (pathname.startsWith('/tv/')) {
-		throw redirect(308, `/discover/tv/${pathname.slice('/tv/'.length)}`);
-	}
-	if (pathname.startsWith('/person/')) {
-		throw redirect(308, `/discover/person/${pathname.slice('/person/'.length)}`);
-	}
+						return json(
+							{
+								success: false,
+								error: 'Unauthorized',
+								code: 'UNAUTHORIZED'
+							},
+							{
+								status: 401,
+								headers: {
+									'x-correlation-id': correlationId,
+									'x-support-id': supportId,
+									...BASE_SECURITY_HEADERS
+								}
+							}
+						);
+					}
 
-	// Check if this is a streaming route - these handle their own errors
-	const isStreamingRoute = event.url.pathname.startsWith('/api/streaming/');
+					// Streaming routes do not rely on a full Better Auth session.
+					// Avoid fetching one here so API-key validation is only counted once.
+					event.locals.apiKey = apiKey;
+					event.locals.apiKeyPermissions = verifyResult.key?.permissions || null;
+				} catch (error) {
+					requestLogger.error(
+						{
+							err: error,
+							logDomain: 'auth',
+							endpoint: pathname
+						},
+						'[Auth] API key validation error'
+					);
 
-	// Log incoming request
-	logger.debug('Incoming request', {
-		correlationId,
-		method: event.request.method,
-		path: event.url.pathname
-	});
-
-	const startTime = performance.now();
-
-	try {
-		// Disable JS modulepreload Link headers to reduce response header size.
-		// With 270+ JS chunks, these headers can exceed nginx's default buffer (4KB).
-		// Preload hints are still included in HTML <link> tags, so no functional impact.
-		const response = await resolve(event, {
-			preload: ({ type }) => type !== 'js'
-		});
-
-		// Add correlation ID to response headers
-		response.headers.set('x-correlation-id', correlationId);
-
-		// Add rate limit headers to API responses
-		if (pathname.startsWith('/api/')) {
-			const responseWithRateLimit = applyRateLimitHeaders(event, response);
-			// Copy headers from rate limit response
-			responseWithRateLimit.headers.forEach((value, key) => {
-				if (key.startsWith('x-ratelimit')) {
-					response.headers.set(key, value);
+					return json(
+						{
+							success: false,
+							error: 'API key validation failed',
+							code: 'INVALID_API_KEY'
+						},
+						{
+							status: 401,
+							headers: {
+								'x-correlation-id': correlationId,
+								...BASE_SECURITY_HEADERS
+							}
+						}
+					);
 				}
-			});
-		}
-
-		// Add security headers (skip CSP for streaming routes - they need flexible origins)
-		if (isStreamingRoute) {
-			// Apply base security headers even for streaming routes
-			for (const [header, value] of Object.entries(BASE_SECURITY_HEADERS)) {
-				response.headers.set(header, value);
-			}
-			response.headers.set('Access-Control-Allow-Origin', '*');
-			response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-			response.headers.set('Access-Control-Allow-Headers', 'Range, Content-Type');
-		} else {
-			for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
-				response.headers.set(header, value);
-			}
-		}
-
-		// Log completed request
-		const duration = Math.round(performance.now() - startTime);
-		logger.debug('Request completed', {
-			correlationId,
-			method: event.request.method,
-			path: event.url.pathname,
-			status: response.status,
-			durationMs: duration
-		});
-
-		return response;
-	} catch (error) {
-		// Streaming routes handle their own errors - re-throw to let SvelteKit handle
-		if (isStreamingRoute) {
-			logger.error('Streaming route error', error, {
-				correlationId,
-				method: event.request.method,
-				path: event.url.pathname
-			});
-			// Return plain text error for streaming routes (media players expect this)
-			const message = error instanceof Error ? error.message : 'Stream error';
-			return new Response(message, {
-				status: 500,
-				headers: {
-					'Content-Type': 'text/plain',
-					'x-correlation-id': correlationId,
-					...BASE_SECURITY_HEADERS
-				}
-			});
-		}
-
-		// Log unhandled errors
-		logger.error('Unhandled error in request', error, {
-			correlationId,
-			method: event.request.method,
-			path: event.url.pathname
-		});
-
-		// Handle AppError instances with consistent formatting
-		if (isAppError(error)) {
-			const response = json(
-				{
-					success: false,
-					...error.toJSON()
-				},
-				{
-					status: error.statusCode,
-					headers: {
-						'x-correlation-id': correlationId,
-						...SECURITY_HEADERS
+			} else {
+				// If setup not complete, force to setup wizard
+				if (!setupComplete) {
+					// Keep health endpoints available for orchestrators during setup
+					if (isHealthRoute(pathname)) {
+						return resolve(event);
+					}
+					if (!pathname.startsWith('/setup')) {
+						throw redirect(302, '/setup');
 					}
 				}
-			);
-			return response;
-		}
-
-		// For non-AppError exceptions, return generic 500 error
-		const response = json(
-			{
-				success: false,
-				error: 'Internal Server Error',
-				code: 'INTERNAL_ERROR'
-			},
-			{
-				status: 500,
-				headers: {
-					'x-correlation-id': correlationId,
-					...SECURITY_HEADERS
+				// Setup is complete - require authentication
+				else {
+					// Check if route requires authentication
+					if (!event.locals.user && !isPublicRoute(pathname)) {
+						// API routes return 401, page routes redirect to login
+						if (pathname.startsWith('/api/')) {
+							return json(
+								{
+									success: false,
+									error: 'Unauthorized',
+									code: 'UNAUTHORIZED'
+								},
+								{
+									status: 401,
+									headers: {
+										'x-correlation-id': correlationId,
+										'x-support-id': supportId,
+										...SECURITY_HEADERS
+									}
+								}
+							);
+						}
+						throw redirect(302, '/login');
+					}
 				}
 			}
-		);
-		return response;
-	}
+
+			// Apply rate limiting to API routes
+			if (pathname.startsWith('/api/')) {
+				const rateLimitResponse = checkApiRateLimit(event);
+				if (rateLimitResponse) {
+					return rateLimitResponse;
+				}
+			}
+
+			// Redirect away from setup/login if setup is complete and user is logged in
+			if (setupComplete && event.locals.user) {
+				if (pathname === '/setup' || pathname === '/login' || pathname.startsWith('/login/')) {
+					throw redirect(302, '/');
+				}
+			}
+
+			// Route standardization redirects
+			if (
+				pathname === '/movies' ||
+				pathname === '/movies/' ||
+				pathname === '/library/movie' ||
+				pathname === '/library/movie/'
+			) {
+				throw redirect(308, '/library/movies');
+			}
+			if (pathname === '/tv' || pathname === '/tv/') {
+				throw redirect(308, '/library/tv');
+			}
+			if (
+				pathname === '/movie' ||
+				pathname === '/movie/' ||
+				pathname === '/discover/movie' ||
+				pathname === '/discover/movie/' ||
+				pathname === '/discover/tv' ||
+				pathname === '/discover/tv/' ||
+				pathname === '/discover/person' ||
+				pathname === '/discover/person/' ||
+				pathname === '/person' ||
+				pathname === '/person/'
+			) {
+				throw redirect(308, '/discover');
+			}
+			if (pathname.startsWith('/movie/')) {
+				throw redirect(308, `/discover/movie/${pathname.slice('/movie/'.length)}`);
+			}
+			if (pathname.startsWith('/tv/')) {
+				throw redirect(308, `/discover/tv/${pathname.slice('/tv/'.length)}`);
+			}
+			if (pathname.startsWith('/person/')) {
+				throw redirect(308, `/discover/person/${pathname.slice('/person/'.length)}`);
+			}
+
+			// Check if this is a streaming route - these handle their own errors
+			const isStreamingRoute = event.url.pathname.startsWith('/api/streaming/');
+
+			// Log incoming request
+			requestLogger.debug('Incoming request');
+
+			const startTime = performance.now();
+
+			try {
+				// Disable JS modulepreload Link headers to reduce response header size.
+				// With 270+ JS chunks, these headers can exceed nginx's default buffer (4KB).
+				// Preload hints are still included in HTML <link> tags, so no functional impact.
+				const response = await resolve(event, {
+					preload: ({ type }) => type !== 'js'
+				});
+
+				// Add correlation ID to response headers
+				response.headers.set('x-correlation-id', correlationId);
+
+				// Add rate limit headers to API responses
+				if (pathname.startsWith('/api/')) {
+					const responseWithRateLimit = applyRateLimitHeaders(event, response);
+					// Copy headers from rate limit response
+					responseWithRateLimit.headers.forEach((value, key) => {
+						if (key.startsWith('x-ratelimit')) {
+							response.headers.set(key, value);
+						}
+					});
+				}
+
+				// Add security headers (skip CSP for streaming routes - they need flexible origins)
+				if (isStreamingRoute) {
+					// Apply base security headers even for streaming routes
+					for (const [header, value] of Object.entries(BASE_SECURITY_HEADERS)) {
+						response.headers.set(header, value);
+					}
+					response.headers.set('Access-Control-Allow-Origin', '*');
+					response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+					response.headers.set('Access-Control-Allow-Headers', 'Range, Content-Type');
+				} else {
+					for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
+						response.headers.set(header, value);
+					}
+				}
+
+				// Log completed request
+				const duration = Math.round(performance.now() - startTime);
+				requestLogger.debug({ status: response.status, durationMs: duration }, 'Request completed');
+
+				return response;
+			} catch (error) {
+				// Streaming routes handle their own errors - re-throw to let SvelteKit handle
+				if (isStreamingRoute) {
+					requestLogger.error({ err: error, logDomain: 'streams' }, 'Streaming route error');
+					// Return plain text error for streaming routes (media players expect this)
+					const message = error instanceof Error ? error.message : 'Stream error';
+					return new Response(message, {
+						status: 500,
+						headers: {
+							'Content-Type': 'text/plain',
+							'x-correlation-id': correlationId,
+							'x-support-id': supportId,
+							...BASE_SECURITY_HEADERS
+						}
+					});
+				}
+
+				// Log unhandled errors
+				requestLogger.error({ err: error }, 'Unhandled error in request');
+
+				// Handle AppError instances with consistent formatting
+				if (isAppError(error)) {
+					const response = json(
+						{
+							success: false,
+							...error.toJSON()
+						},
+						{
+							status: error.statusCode,
+							headers: {
+								'x-correlation-id': correlationId,
+								'x-support-id': supportId,
+								...SECURITY_HEADERS
+							}
+						}
+					);
+					return response;
+				}
+
+				// For non-AppError exceptions, return generic 500 error
+				const response = json(
+					{
+						success: false,
+						error: 'Internal Server Error',
+						code: 'INTERNAL_ERROR'
+					},
+					{
+						status: 500,
+						headers: {
+							'x-correlation-id': correlationId,
+							'x-support-id': supportId,
+							...SECURITY_HEADERS
+						}
+					}
+				);
+				return response;
+			}
+		}
+	);
 };
 
 /**
@@ -800,18 +825,28 @@ export const handle = sequence(authHandler, customHandler);
  * This catches errors that weren't handled in the request handler.
  */
 export const handleError: HandleServerError = ({ error, event }) => {
-	const correlationId = event.locals.correlationId ?? 'unknown';
+	const correlationId = event.locals.requestId ?? event.locals.correlationId ?? 'unknown';
+	const supportId = event.locals.supportId ?? createSupportId();
+	const requestLogger = event.locals.logger ?? logger;
 
-	logger.error('Uncaught exception', error, {
-		correlationId,
-		method: event.request.method,
-		path: event.url.pathname
-	});
+	requestLogger.error(
+		{
+			err: error,
+			requestId: correlationId,
+			correlationId,
+			supportId,
+			logDomain: 'http',
+			method: event.request.method,
+			path: event.url.pathname
+		},
+		'Uncaught exception'
+	);
 
 	// Return safe error message to client
 	return {
 		message: isAppError(error) ? error.message : 'An unexpected error occurred',
-		code: isAppError(error) ? error.code : 'INTERNAL_ERROR'
+		code: isAppError(error) ? error.code : 'INTERNAL_ERROR',
+		supportId
 	};
 };
 

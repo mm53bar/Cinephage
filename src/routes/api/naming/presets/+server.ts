@@ -10,6 +10,7 @@ import {
 	type NamingPreset
 } from '$lib/server/library/naming/presets';
 import { eq } from 'drizzle-orm';
+import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 /**
@@ -43,7 +44,7 @@ export const GET: RequestHandler = async () => {
 			}
 		});
 	} catch (err) {
-		console.error('Error fetching naming presets:', err);
+		logger.error({ err, component: 'NamingPresetsApi' }, 'Error fetching naming presets');
 		return json({ error: 'Failed to fetch presets' }, { status: 500 });
 	}
 };
@@ -112,7 +113,7 @@ export const POST: RequestHandler = async (event) => {
 			}
 		});
 	} catch (err) {
-		console.error('Error creating naming preset:', err);
+		logger.error({ err, component: 'NamingPresetsApi' }, 'Error creating naming preset');
 		return json({ error: 'Failed to create preset' }, { status: 500 });
 	}
 };

@@ -40,7 +40,6 @@
 			await onPause(activity.queueItemId);
 			toasts.success('Download paused');
 		} catch (error) {
-			console.error('Failed to pause download:', error);
 			const message = error instanceof Error ? error.message : 'Failed to pause download';
 			toasts.error(message);
 		} finally {
@@ -55,7 +54,6 @@
 			await onResume(activity.queueItemId);
 			toasts.success('Download resumed');
 		} catch (error) {
-			console.error('Failed to resume download:', error);
 			const message = error instanceof Error ? error.message : 'Failed to resume download';
 			toasts.error(message);
 		} finally {
@@ -71,7 +69,6 @@
 			toasts.success('Download removed');
 			onClose();
 		} catch (error) {
-			console.error('Failed to remove download:', error);
 			const message = error instanceof Error ? error.message : 'Failed to remove download';
 			toasts.error(message);
 		} finally {
@@ -89,7 +86,6 @@
 			await onRetry(queueItemId);
 			toasts.success(isImportFailed ? 'Import retry initiated' : 'Download retry initiated');
 		} catch (error) {
-			console.error('Failed to retry download:', error);
 			const message = error instanceof Error ? error.message : 'Failed to retry download';
 			toasts.error(message);
 		} finally {

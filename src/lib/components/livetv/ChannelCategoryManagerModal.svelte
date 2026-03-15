@@ -3,6 +3,7 @@
 	import type { ChannelCategory, ChannelLineupItemWithDetails } from '$lib/types/livetv';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	interface Props {
 		open: boolean;
@@ -103,7 +104,7 @@
 			onChange();
 			cancelEdit();
 		} catch (e) {
-			console.error('Failed to update category:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to update category');
 		} finally {
 			savingId = null;
 		}
@@ -145,7 +146,7 @@
 			onChange();
 			closeDeleteConfirm(true);
 		} catch (e) {
-			console.error('Failed to delete category:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to delete category');
 		} finally {
 			deletingId = null;
 		}
@@ -174,7 +175,7 @@
 			newName = '';
 			newColor = '';
 		} catch (e) {
-			console.error('Failed to create category:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to create category');
 		} finally {
 			isAdding = false;
 		}
@@ -230,7 +231,7 @@
 
 			onChange();
 		} catch (e) {
-			console.error('Failed to reorder categories:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to reorder categories');
 		} finally {
 			reordering = false;
 		}

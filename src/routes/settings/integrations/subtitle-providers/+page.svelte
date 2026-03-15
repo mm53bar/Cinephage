@@ -467,13 +467,13 @@
 
 			if (!response.ok) {
 				const error = await response.json();
-				console.error('Failed to reorder providers:', error);
+				toasts.error((error as { error?: string } | null)?.error || 'Failed to reorder providers');
 				return;
 			}
 
 			await invalidateAll();
 		} catch (e) {
-			console.error('Failed to reorder providers:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to reorder providers');
 		}
 	}
 </script>

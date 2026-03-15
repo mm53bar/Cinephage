@@ -1,6 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { getManagedApiKeysForRequest } from '$lib/server/auth/index.js';
 import { error } from '@sveltejs/kit';
+import { logger } from '$lib/logging';
 import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsService.js';
 
 export const load: PageServerLoad = async ({ request, locals }) => {
@@ -22,7 +23,7 @@ export const load: PageServerLoad = async ({ request, locals }) => {
 			externalUrl
 		};
 	} catch (err) {
-		console.error('Error loading system settings:', err);
+		logger.error({ err, component: 'SystemSettingsPage' }, 'Error loading system settings');
 		return {
 			mainApiKey: null,
 			streamingApiKey: null,

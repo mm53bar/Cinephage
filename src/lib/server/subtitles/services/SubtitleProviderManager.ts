@@ -9,7 +9,9 @@ import { db } from '$lib/server/db';
 import { subtitleProviders } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import type {
 	ISubtitleProvider,
 	ProviderDefinition,
@@ -60,19 +62,25 @@ export class SubtitleProviderManager {
 			try {
 				await this.getProviderInstance(config.id);
 			} catch (error) {
-				logger.warn('Failed to initialize provider', {
-					providerId: config.id,
-					name: config.name,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						providerId: config.id,
+						name: config.name,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to initialize provider'
+				);
 			}
 		}
 
 		this.initialized = true;
-		logger.info('SubtitleProviderManager initialized', {
-			providerCount: configs.length,
-			enabledCount: configs.filter((c) => c.enabled).length
-		});
+		logger.info(
+			{
+				providerCount: configs.length,
+				enabledCount: configs.filter((c) => c.enabled).length
+			},
+			'SubtitleProviderManager initialized'
+		);
 	}
 
 	// =========================================================================
@@ -128,7 +136,7 @@ export class SubtitleProviderManager {
 			throw new Error('Failed to create provider');
 		}
 
-		logger.info('Created subtitle provider', { id, name: config.name });
+		logger.info({ id, name: config.name }, 'Created subtitle provider');
 		return created;
 	}
 
@@ -168,7 +176,7 @@ export class SubtitleProviderManager {
 			throw new Error('Failed to update provider');
 		}
 
-		logger.info('Updated subtitle provider', { id, name: updated.name });
+		logger.info({ id, name: updated.name }, 'Updated subtitle provider');
 		return updated;
 	}
 
@@ -178,7 +186,7 @@ export class SubtitleProviderManager {
 	async deleteProvider(id: string): Promise<void> {
 		await db.delete(subtitleProviders).where(eq(subtitleProviders.id, id));
 		this.providerInstances.delete(id);
-		logger.info('Deleted subtitle provider', { id });
+		logger.info({ id }, 'Deleted subtitle provider');
 	}
 
 	// =========================================================================
@@ -204,10 +212,13 @@ export class SubtitleProviderManager {
 			this.providerInstances.set(id, instance);
 			return instance;
 		} catch (error) {
-			logger.error('Failed to create provider instance', {
-				providerId: id,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.error(
+				{
+					providerId: id,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to create provider instance'
+			);
 			return undefined;
 		}
 	}
@@ -319,16 +330,19 @@ export class SubtitleProviderManager {
 			})
 			.where(eq(subtitleProviders.id, id));
 
-		logger.warn('Provider throttled', {
-			providerId: id,
-			providerName: config.name,
-			implementation: config.implementation,
-			errorType,
-			errorMessage,
-			failures,
-			throttledUntil,
-			throttleDescription
-		});
+		logger.warn(
+			{
+				providerId: id,
+				providerName: config.name,
+				implementation: config.implementation,
+				errorType,
+				errorMessage,
+				failures,
+				throttledUntil,
+				throttleDescription
+			},
+			'Provider throttled'
+		);
 	}
 
 	/**
@@ -352,12 +366,15 @@ export class SubtitleProviderManager {
 
 		// Log recovery from error state
 		if (wasThrottled || hadErrors) {
-			logger.info('Provider recovered from error state', {
-				providerId: id,
-				providerName: config?.name,
-				wasThrottled,
-				previousFailures: config?.consecutiveFailures
-			});
+			logger.info(
+				{
+					providerId: id,
+					providerName: config?.name,
+					wasThrottled,
+					previousFailures: config?.consecutiveFailures
+				},
+				'Provider recovered from error state'
+			);
 		}
 	}
 
@@ -420,7 +437,7 @@ export class SubtitleProviderManager {
 			})
 			.where(eq(subtitleProviders.id, id));
 
-		logger.info('Reset provider throttle', { providerId: id });
+		logger.info({ providerId: id }, 'Reset provider throttle');
 	}
 
 	// =========================================================================

@@ -358,10 +358,7 @@ export const GET: RequestHandler = async ({ params }) => {
 				send('queue:sync', { queueItems });
 				return queueItems;
 			} catch (error) {
-				logger.error('[SeriesStream] Failed to fetch queue sync', {
-					seriesId,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error({ err: error, seriesId }, '[SeriesStream] Failed to fetch queue sync');
 				return [];
 			}
 		};
@@ -370,17 +367,20 @@ export const GET: RequestHandler = async ({ params }) => {
 			// If already fetching, just mark that we need another refresh with this version
 			if (isFetchingMediaUpdate) {
 				pendingVersion = Math.max(pendingVersion, version);
-				logger.debug('[SeriesStream] Queuing refresh request', {
-					seriesId,
-					version,
-					pendingVersion
-				});
+				logger.debug(
+					{
+						seriesId,
+						version,
+						pendingVersion
+					},
+					'[SeriesStream] Queuing refresh request'
+				);
 				return;
 			}
 
 			isFetchingMediaUpdate = true;
 			try {
-				logger.info('[SeriesStream] Fetching media update', { seriesId, version });
+				logger.info({ seriesId, version }, '[SeriesStream] Fetching media update');
 				const [data, queueItems] = await Promise.all([
 					getSeriesData(seriesId),
 					getQueueItems(seriesId)
@@ -388,32 +388,37 @@ export const GET: RequestHandler = async ({ params }) => {
 
 				// Only send if this is still the latest request (not superseded by another)
 				if (version >= lastSentVersion && data) {
-					logger.info('[SeriesStream] Sending media:updated', {
-						seriesId,
-						version,
-						episodeCount: data.seasons?.reduce((sum, s) => sum + (s.episodeFileCount || 0), 0)
-					});
+					logger.info(
+						{
+							seriesId,
+							version,
+							episodeCount: data.seasons?.reduce((sum, s) => sum + (s.episodeFileCount || 0), 0)
+						},
+						'[SeriesStream] Sending media:updated'
+					);
 					send('media:updated', { ...data, queueItems });
 					lastSentVersion = version;
 				} else {
-					logger.debug('[SeriesStream] Skipping stale media:updated', {
-						seriesId,
-						version,
-						lastSentVersion
-					});
+					logger.debug(
+						{
+							seriesId,
+							version,
+							lastSentVersion
+						},
+						'[SeriesStream] Skipping stale media:updated'
+					);
 				}
 			} catch (error) {
-				logger.error('[SeriesStream] Failed to fetch media update', {
-					seriesId,
-					version,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error(
+					{ err: error, seriesId, version },
+					'[SeriesStream] Failed to fetch media update'
+				);
 			} finally {
 				isFetchingMediaUpdate = false;
 
 				// If another request was queued during our execution, process it now
 				if (pendingVersion > version) {
-					logger.info('[SeriesStream] Processing queued refresh', { seriesId, pendingVersion });
+					logger.info({ seriesId, pendingVersion }, '[SeriesStream] Processing queued refresh');
 					const nextVersion = pendingVersion;
 					pendingVersion = 0;
 					void sendMediaUpdate(nextVersion);
@@ -428,27 +433,36 @@ export const GET: RequestHandler = async ({ params }) => {
 			// Replay recent buffered events (handles race condition where events fired before connection)
 			// Only replay events that happened BEFORE queue sync completed.
 			const recentEvents = eventBuffer.getRecentSeriesEvents(seriesId);
-			logger.info('[SeriesStream] Replaying buffered events', {
-				seriesId,
-				count: recentEvents.length,
-				bufferSize: recentEvents.length
-			});
+			logger.info(
+				{
+					seriesId,
+					count: recentEvents.length,
+					bufferSize: recentEvents.length
+				},
+				'[SeriesStream] Replaying buffered events'
+			);
 			for (const event of recentEvents) {
 				// Skip events that happened after we started (they'll come through the live listener)
 				if (event.timestamp > queueSyncTime) {
-					logger.debug('[SeriesStream] Skipping future event in replay', {
-						seriesId,
-						episodeIds: event.episodeIds,
-						timestamp: event.timestamp,
-						fetchTime: queueSyncTime
-					});
+					logger.debug(
+						{
+							seriesId,
+							episodeIds: event.episodeIds,
+							timestamp: event.timestamp,
+							fetchTime: queueSyncTime
+						},
+						'[SeriesStream] Skipping future event in replay'
+					);
 					continue;
 				}
-				logger.info('[SeriesStream] Replaying buffered event', {
-					seriesId,
-					seasonNumber: event.seasonNumber,
-					episodeIds: event.episodeIds
-				});
+				logger.info(
+					{
+						seriesId,
+						seasonNumber: event.seasonNumber,
+						episodeIds: event.episodeIds
+					},
+					'[SeriesStream] Replaying buffered event'
+				);
 				send('file:added', {
 					file: event.file,
 					episodeIds: event.episodeIds,
@@ -463,10 +477,13 @@ export const GET: RequestHandler = async ({ params }) => {
 		const onQueueAdded = (item: unknown) => {
 			const typedItem = item as QueueItem & { seriesId?: string };
 			if (typedItem.seriesId === seriesId) {
-				logger.debug('[SeriesStream] Queue item added for series', {
-					seriesId,
-					queueItemId: typedItem.id
-				});
+				logger.debug(
+					{
+						seriesId,
+						queueItemId: typedItem.id
+					},
+					'[SeriesStream] Queue item added for series'
+				);
 				send('queue:added', {
 					id: typedItem.id,
 					title: typedItem.title,
@@ -501,13 +518,16 @@ export const GET: RequestHandler = async ({ params }) => {
 		const onFileImported = (data: unknown) => {
 			const typedData = data as FileImportedEvent;
 			if (typedData.mediaType === 'episode' && typedData.seriesId === seriesId) {
-				logger.info('[SeriesStream] File imported event received, sending to client', {
-					seriesId,
-					fileId: typedData.file.id,
-					seasonNumber: typedData.seasonNumber,
-					episodeIds: typedData.episodeIds,
-					episodeCount: typedData.episodeIds?.length
-				});
+				logger.info(
+					{
+						seriesId,
+						fileId: typedData.file.id,
+						seasonNumber: typedData.seasonNumber,
+						episodeIds: typedData.episodeIds,
+						episodeCount: typedData.episodeIds?.length
+					},
+					'[SeriesStream] File imported event received, sending to client'
+				);
 				send('file:added', {
 					file: typedData.file,
 					episodeIds: typedData.episodeIds,
@@ -519,10 +539,13 @@ export const GET: RequestHandler = async ({ params }) => {
 				// If files were replaced, send deletion events
 				if (typedData.replacedFileIds) {
 					for (const replacedId of typedData.replacedFileIds) {
-						logger.info('[SeriesStream] Sending replaced file removal event', {
-							seriesId,
-							replacedFileId: replacedId
-						});
+						logger.info(
+							{
+								seriesId,
+								replacedFileId: replacedId
+							},
+							'[SeriesStream] Sending replaced file removal event'
+						);
 						send('file:removed', { fileId: replacedId });
 					}
 				}
@@ -543,7 +566,7 @@ export const GET: RequestHandler = async ({ params }) => {
 		// Handle metadata/subtitle/settings updates for this series
 		const onSeriesUpdated = (event: { seriesId: string }) => {
 			if (event.seriesId === seriesId) {
-				logger.info('[SeriesStream] Series update triggered, refreshing state', { seriesId });
+				logger.info({ seriesId }, '[SeriesStream] Series update triggered, refreshing state');
 				// Pass a new version to ensure this refresh takes precedence over any in-flight refresh.
 				void sendMediaUpdate(Date.now());
 			}

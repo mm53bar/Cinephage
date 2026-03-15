@@ -42,10 +42,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			);
 		}
 
-		logger.info('[API] Auto-search triggered for movie', {
-			movieId,
-			title: movie.title
-		});
+		logger.info(
+			{
+				movieId,
+				title: movie.title
+			},
+			'[API] Auto-search triggered for movie'
+		);
 
 		// Track search in active searches
 		const searchId = `movie-${movieId}`;
@@ -109,13 +112,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						onProgress
 					});
 
-					logger.info('[API] Auto-search completed for movie', {
-						movieId,
-						title: movie.title,
-						success: result.success,
-						releaseName: result.releaseName,
-						error: result.error
-					});
+					logger.info(
+						{
+							movieId,
+							title: movie.title,
+							success: result.success,
+							releaseName: result.releaseName,
+							error: result.error
+						},
+						'[API] Auto-search completed for movie'
+					);
 
 					// Send completion event
 					sendEvent('search:completed', {

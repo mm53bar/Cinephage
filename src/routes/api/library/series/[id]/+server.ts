@@ -232,15 +232,21 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			if (settings.searchOnMonitorEnabled) {
 				// Fire and forget - don't block the response
 				searchOnAdd.searchForMissingEpisodes(params.id).catch((err) => {
-					logger.error('[API] Background search on monitor enable failed', {
-						seriesId: params.id,
-						error: err instanceof Error ? err.message : 'Unknown error'
-					});
+					logger.error(
+						{
+							seriesId: params.id,
+							error: err instanceof Error ? err.message : 'Unknown error'
+						},
+						'[API] Background search on monitor enable failed'
+					);
 				});
 
-				logger.info('[API] Triggered search on monitor enable for series', {
-					seriesId: params.id
-				});
+				logger.info(
+					{
+						seriesId: params.id
+					},
+					'[API] Triggered search on monitor enable for series'
+				);
 			}
 		}
 
@@ -264,10 +270,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 						.where(and(eq(episodes.seriesId, params.id), eq(episodes.hasFile, true)));
 
 					if (episodesWithFiles.length > 0) {
-						logger.info('[API] Subtitle monitoring enabled for series, triggering search', {
-							seriesId: params.id,
-							episodeCount: episodesWithFiles.length
-						});
+						logger.info(
+							{
+								seriesId: params.id,
+								episodeCount: episodesWithFiles.length
+							},
+							'[API] Subtitle monitoring enabled for series, triggering search'
+						);
 
 						// Fire-and-forget: batch search all episodes
 						const items = episodesWithFiles.map((ep) => ({
@@ -276,10 +285,13 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 						}));
 
 						searchSubtitlesForMediaBatch(items).catch((err) => {
-							logger.warn('[API] Background subtitle batch search failed', {
-								seriesId: params.id,
-								error: err instanceof Error ? err.message : String(err)
-							});
+							logger.warn(
+								{
+									seriesId: params.id,
+									error: err instanceof Error ? err.message : String(err)
+								},
+								'[API] Background subtitle batch search failed'
+							);
 						});
 					}
 				}
@@ -352,7 +364,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 				seriesItem.rootFolderPath,
 				seriesItem.path
 			);
-			logger.debug('[API] Removed series folder and all contents', { seriesFolder });
+			logger.debug({ seriesFolder }, '[API] Removed series folder and all contents');
 		}
 
 		// Delete all episode file records from database
@@ -383,10 +395,13 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 							}
 						}
 					} catch (err) {
-						logger.warn('[API] Failed to remove download from client', {
-							queueItemId: queueItem.id,
-							error: err instanceof Error ? err.message : 'Unknown'
-						});
+						logger.warn(
+							{
+								queueItemId: queueItem.id,
+								error: err instanceof Error ? err.message : 'Unknown'
+							},
+							'[API] Failed to remove download from client'
+						);
 					}
 				}
 				// Delete queue record
@@ -407,7 +422,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			await db.delete(series).where(eq(series.id, params.id));
 			libraryMediaEvents.emitSeriesUpdated(params.id);
 
-			logger.info('[API] Removed series from library', { seriesId: params.id });
+			logger.info({ seriesId: params.id }, '[API] Removed series from library');
 			return json({ success: true, removed: true });
 		} else {
 			// Update all episodes in this series to hasFile=false

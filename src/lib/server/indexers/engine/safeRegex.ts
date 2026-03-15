@@ -3,7 +3,9 @@
  * Validates regex patterns and provides safe execution.
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 /**
  * Maximum input length to process with regex.
@@ -35,16 +37,19 @@ export function isPatternSafe(pattern: string): boolean {
 
 	// Very long patterns are suspicious
 	if (pattern.length > 500) {
-		logger.warn('Regex pattern too long', { length: pattern.length });
+		logger.warn({ length: pattern.length }, 'Regex pattern too long');
 		return false;
 	}
 
 	// Check for dangerous constructs
 	for (const dangerous of DANGEROUS_PATTERNS) {
 		if (dangerous.test(pattern)) {
-			logger.warn('Potentially dangerous regex pattern detected', {
-				pattern: pattern.substring(0, 100)
-			});
+			logger.warn(
+				{
+					pattern: pattern.substring(0, 100)
+				},
+				'Potentially dangerous regex pattern detected'
+			);
 			return false;
 		}
 	}
@@ -64,10 +69,13 @@ export function createSafeRegex(pattern: string, flags?: string): RegExp | null 
 	try {
 		return new RegExp(pattern, flags);
 	} catch (err) {
-		logger.warn('Invalid regex pattern', {
-			pattern: pattern.substring(0, 100),
-			error: err instanceof Error ? err.message : 'Unknown error'
-		});
+		logger.warn(
+			{
+				pattern: pattern.substring(0, 100),
+				error: err instanceof Error ? err.message : 'Unknown error'
+			},
+			'Invalid regex pattern'
+		);
 		return null;
 	}
 }
@@ -79,19 +87,25 @@ export function createSafeRegex(pattern: string, flags?: string): RegExp | null 
 export function safeMatch(input: string, regex: RegExp): RegExpMatchArray | null {
 	// Limit input length to prevent slow operations
 	if (input.length > MAX_INPUT_LENGTH) {
-		logger.warn('Input too long for regex match', {
-			length: input.length,
-			limit: MAX_INPUT_LENGTH
-		});
+		logger.warn(
+			{
+				length: input.length,
+				limit: MAX_INPUT_LENGTH
+			},
+			'Input too long for regex match'
+		);
 		return null;
 	}
 
 	try {
 		return input.match(regex);
 	} catch (err) {
-		logger.warn('Regex match failed', {
-			error: err instanceof Error ? err.message : 'Unknown error'
-		});
+		logger.warn(
+			{
+				error: err instanceof Error ? err.message : 'Unknown error'
+			},
+			'Regex match failed'
+		);
 		return null;
 	}
 }
@@ -103,19 +117,25 @@ export function safeMatch(input: string, regex: RegExp): RegExpMatchArray | null
 export function safeReplace(input: string, regex: RegExp, replacement: string): string {
 	// Limit input length to prevent slow operations
 	if (input.length > MAX_INPUT_LENGTH) {
-		logger.warn('Input too long for regex replace', {
-			length: input.length,
-			limit: MAX_INPUT_LENGTH
-		});
+		logger.warn(
+			{
+				length: input.length,
+				limit: MAX_INPUT_LENGTH
+			},
+			'Input too long for regex replace'
+		);
 		return input;
 	}
 
 	try {
 		return input.replace(regex, replacement);
 	} catch (err) {
-		logger.warn('Regex replace failed', {
-			error: err instanceof Error ? err.message : 'Unknown error'
-		});
+		logger.warn(
+			{
+				error: err instanceof Error ? err.message : 'Unknown error'
+			},
+			'Regex replace failed'
+		);
 		return input;
 	}
 }

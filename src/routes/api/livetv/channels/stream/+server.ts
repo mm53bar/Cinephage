@@ -23,7 +23,7 @@ import { getEpgService } from '$lib/server/livetv/epg';
 import type { RequestHandler } from './$types';
 import { createChildLogger } from '$lib/logging';
 
-const logger = createChildLogger({ module: 'LiveTVChannelsStream' });
+const logger = createChildLogger({ component: 'LiveTVChannelsStream', logDomain: 'livetv' });
 
 interface NowNextEntry {
 	now: unknown;
@@ -71,9 +71,7 @@ export const GET: RequestHandler = async () => {
 					lineupChannelIds: data.lineup.map((item) => item.channelId)
 				});
 			} catch (error) {
-				logger.error('Failed to fetch initial LiveTV state', {
-					error: error instanceof Error ? error.message : 'Unknown error'
-				});
+				logger.error({ err: error }, 'Failed to fetch initial LiveTV state');
 				send('livetv:error', { message: 'Failed to fetch initial state' });
 			}
 		};
@@ -104,9 +102,7 @@ export const GET: RequestHandler = async () => {
 
 				send('epg:nowNext', { channels: epgNowNext });
 			} catch (error) {
-				logger.error('Failed to fetch EPG now/next data', {
-					error: error instanceof Error ? error.message : 'Unknown error'
-				});
+				logger.error({ err: error }, 'Failed to fetch EPG now/next data');
 			}
 		};
 

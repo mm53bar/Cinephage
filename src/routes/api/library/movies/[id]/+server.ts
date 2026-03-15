@@ -64,11 +64,14 @@ export const GET: RequestHandler = async ({ params }) => {
 			db.select().from(subtitles).where(eq(subtitles.movieId, movie.id)),
 			getLanguageProfileService().getMovieSubtitleStatus(movie.id),
 			tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
-				logger.warn('[API] Failed to fetch movie release info', {
-					movieId: movie.id,
-					tmdbId: movie.tmdbId,
-					error: err instanceof Error ? err.message : String(err)
-				});
+				logger.warn(
+					{
+						movieId: movie.id,
+						tmdbId: movie.tmdbId,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[API] Failed to fetch movie release info'
+				);
 				return null;
 			})
 		]);
@@ -185,15 +188,21 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			if (!wasEnabled && isNowEnabled) {
 				const settings = await monitoringScheduler.getSettings();
 				if (settings.subtitleSearchOnImportEnabled) {
-					logger.info('[API] Subtitle monitoring enabled for movie, triggering search', {
-						movieId: params.id
-					});
+					logger.info(
+						{
+							movieId: params.id
+						},
+						'[API] Subtitle monitoring enabled for movie, triggering search'
+					);
 					// Fire-and-forget: don't await
 					searchSubtitlesForNewMedia('movie', params.id).catch((err) => {
-						logger.warn('[API] Background subtitle search failed', {
-							movieId: params.id,
-							error: err instanceof Error ? err.message : String(err)
-						});
+						logger.warn(
+							{
+								movieId: params.id,
+								error: err instanceof Error ? err.message : String(err)
+							},
+							'[API] Background subtitle search failed'
+						);
 					});
 				}
 			}
@@ -263,7 +272,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 		// Delete files from disk if requested
 		if (deleteFiles && movie.rootFolderPath && movie.path) {
 			const movieFolder = await deleteDirectoryWithinRoot(movie.rootFolderPath, movie.path);
-			logger.debug('[API] Removed movie folder and all contents', { movieFolder });
+			logger.debug({ movieFolder }, '[API] Removed movie folder and all contents');
 		}
 
 		// Delete movie file records from database
@@ -294,10 +303,13 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 							}
 						}
 					} catch (err) {
-						logger.warn('[API] Failed to remove download from client', {
-							queueItemId: queueItem.id,
-							error: err instanceof Error ? err.message : 'Unknown'
-						});
+						logger.warn(
+							{
+								queueItemId: queueItem.id,
+								error: err instanceof Error ? err.message : 'Unknown'
+							},
+							'[API] Failed to remove download from client'
+						);
 					}
 				}
 				// Delete queue record
@@ -318,7 +330,7 @@ export const DELETE: RequestHandler = async ({ params, url }) => {
 			await db.delete(movies).where(eq(movies.id, params.id));
 			libraryMediaEvents.emitMovieUpdated(params.id);
 
-			logger.info('[API] Removed movie from library', { movieId: params.id });
+			logger.info({ movieId: params.id }, '[API] Removed movie from library');
 			return json({ success: true, removed: true });
 		} else {
 			// Update movie to show as missing

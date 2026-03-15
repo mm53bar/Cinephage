@@ -11,35 +11,26 @@ fi
 
 CONFIG_ROOT="/config"
 LEGACY_DATA_DIR="/app/data"
-LEGACY_LOG_DIR="/app/logs"
 BUNDLED_DATA_DIR="/app/bundled-data"
 
 CONFIG_MOUNTED=0
 LEGACY_DATA_MOUNTED=0
-LEGACY_LOG_MOUNTED=0
 if grep -q " ${CONFIG_ROOT} " /proc/mounts 2>/dev/null; then
   CONFIG_MOUNTED=1
 fi
 if grep -q " ${LEGACY_DATA_DIR} " /proc/mounts 2>/dev/null; then
   LEGACY_DATA_MOUNTED=1
 fi
-if grep -q " ${LEGACY_LOG_DIR} " /proc/mounts 2>/dev/null; then
-  LEGACY_LOG_MOUNTED=1
-fi
-
 DEFAULT_DATA_DIR="${CONFIG_ROOT}/data"
-DEFAULT_LOG_DIR="${CONFIG_ROOT}/logs"
 DEFAULT_INDEXER_DEFINITIONS_PATH="${DEFAULT_DATA_DIR}/indexers/definitions"
 DEFAULT_EXTERNAL_LISTS_PRESETS_PATH="${DEFAULT_DATA_DIR}/external-lists/presets"
 
 DATA_DIR="${DATA_DIR:-${DEFAULT_DATA_DIR}}"
-LOG_DIR="${LOG_DIR:-${DEFAULT_LOG_DIR}}"
-if [ "$DATA_DIR" = "${CONFIG_ROOT}/data" ] && [ "$LOG_DIR" = "${CONFIG_ROOT}/logs" ]; then
-  if [ "$CONFIG_MOUNTED" != "1" ] && { [ "$LEGACY_DATA_MOUNTED" = "1" ] || [ "$LEGACY_LOG_MOUNTED" = "1" ]; }; then
-    echo "Legacy data/log mounts detected under /app; using legacy paths for this run."
-    echo "Mount ${CONFIG_ROOT} alongside /app/data and /app/logs for one run to migrate."
+if [ "$DATA_DIR" = "${CONFIG_ROOT}/data" ]; then
+  if [ "$CONFIG_MOUNTED" != "1" ] && [ "$LEGACY_DATA_MOUNTED" = "1" ]; then
+    echo "Legacy data mount detected under /app; using legacy path for this run."
+    echo "Mount ${CONFIG_ROOT} alongside /app/data for one run to migrate."
     DATA_DIR="$LEGACY_DATA_DIR"
-    LOG_DIR="$LEGACY_LOG_DIR"
   fi
 fi
 
@@ -51,7 +42,7 @@ if [ -z "${EXTERNAL_LISTS_PRESETS_PATH:-}" ] || [ "$EXTERNAL_LISTS_PRESETS_PATH"
 fi
 INDEXER_CUSTOM_DEFINITIONS_PATH="${INDEXER_CUSTOM_DEFINITIONS_PATH:-${INDEXER_DEFINITIONS_PATH}/custom}"
 EXTERNAL_LISTS_CUSTOM_PRESETS_PATH="${EXTERNAL_LISTS_CUSTOM_PRESETS_PATH:-${EXTERNAL_LISTS_PRESETS_PATH}/custom}"
-export DATA_DIR LOG_DIR INDEXER_DEFINITIONS_PATH EXTERNAL_LISTS_PRESETS_PATH \
+export DATA_DIR INDEXER_DEFINITIONS_PATH EXTERNAL_LISTS_PRESETS_PATH \
   INDEXER_CUSTOM_DEFINITIONS_PATH EXTERNAL_LISTS_CUSTOM_PRESETS_PATH
 
 # camoufox-js resolves install path from os.homedir(), so force HOME into /config/cache
@@ -158,7 +149,6 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
   # Create all necessary directories before dropping privileges
   mkdir -p \
     "$DATA_DIR" \
-    "$LOG_DIR" \
     "$INDEXER_DEFINITIONS_PATH" \
     "$EXTERNAL_LISTS_PRESETS_PATH" \
     "$INDEXER_CUSTOM_DEFINITIONS_PATH" \
@@ -167,10 +157,9 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
 
   if [ "$CONFIG_MOUNTED" = "1" ]; then
     migrate_dir "$LEGACY_DATA_DIR" "$DATA_DIR" "data"
-    migrate_dir "$LEGACY_LOG_DIR" "$LOG_DIR" "logs"
-  elif has_contents "$LEGACY_DATA_DIR" || has_contents "$LEGACY_LOG_DIR"; then
-    echo "Warning: legacy /app data/logs detected but ${CONFIG_ROOT} is not mounted."
-    echo "Mount ${CONFIG_ROOT} and keep legacy mounts for one run to migrate."
+  elif has_contents "$LEGACY_DATA_DIR"; then
+    echo "Warning: legacy /app/data detected but ${CONFIG_ROOT} is not mounted."
+    echo "Mount ${CONFIG_ROOT} and keep the legacy data mount for one run to migrate."
   fi
 
   if should_run_recursive_ownership_fix "$TARGET_UID" "$TARGET_GID"; then
@@ -186,7 +175,6 @@ if [ "$(id -u)" = "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ]; then
     chown "$TARGET_UID:$TARGET_GID" \
       "$CONFIG_ROOT" \
       "$DATA_DIR" \
-      "$LOG_DIR" \
       "$INDEXER_DEFINITIONS_PATH" \
       "$EXTERNAL_LISTS_PRESETS_PATH" \
       "$INDEXER_CUSTOM_DEFINITIONS_PATH" \
@@ -202,7 +190,6 @@ fi
 
 if [ "$(id -u)" != "0" ] && [ -z "${CINEPHAGE_REEXEC:-}" ] && [ "$CONFIG_MOUNTED" = "1" ]; then
   migrate_dir "$LEGACY_DATA_DIR" "$DATA_DIR" "data"
-  migrate_dir "$LEGACY_LOG_DIR" "$LOG_DIR" "logs"
 fi
 
 echo "Running as UID=$(id -u) GID=$(id -g)"
@@ -242,7 +229,6 @@ check_permissions() {
 
 echo "Checking directory permissions..."
 check_permissions "$DATA_DIR" "data"
-check_permissions "$LOG_DIR" "logs"
 check_permissions "$INDEXER_DEFINITIONS_PATH" "indexer definitions"
 check_permissions "$EXTERNAL_LISTS_PRESETS_PATH" "external list presets"
 echo "Directory permissions OK"

@@ -104,17 +104,17 @@ Redact any sensitive information (API keys, paths with usernames, etc.)
 Include relevant logs when reporting issues:
 
 ```bash
-# Recent errors
-grep -i error logs/cinephage.log | tail -50
-
-# Specific timeframe
-grep "2025-01-08" logs/cinephage.log | tail -100
-
 # Docker logs
 docker logs cinephage --tail 100 2>&1
 
+# Docker logs filtered for errors
+docker logs cinephage --since 1h 2>&1 | grep -i error
+
 # Systemd logs
 sudo journalctl -u cinephage -n 100
+
+# Systemd logs for a timeframe
+sudo journalctl -u cinephage --since "2025-01-08 00:00:00"
 ```
 
 **Redact sensitive information:**

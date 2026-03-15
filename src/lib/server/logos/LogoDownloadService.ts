@@ -1,6 +1,8 @@
 import { writeFile, mkdir, readdir, stat, rm } from 'fs/promises';
 import { join } from 'path';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 import { EventEmitter } from 'node:events';
 import { invalidateLogoLibraryCache } from './logo-library.js';
 
@@ -103,7 +105,7 @@ export class LogoDownloadService extends EventEmitter {
 
 			// First, get the directory listing from GitHub API
 			const treeUrl = `https://api.github.com/repos/${GITHUB_REPO}/git/trees/${GITHUB_BRANCH}?recursive=1`;
-			logger.info('[LogoDownload] Fetching repository tree', { url: treeUrl });
+			logger.info({ url: treeUrl }, '[LogoDownload] Fetching repository tree');
 
 			const treeRes = await fetch(treeUrl, {
 				signal: this._abortController.signal,
@@ -128,7 +130,7 @@ export class LogoDownloadService extends EventEmitter {
 			);
 
 			this._progress.total = logoFiles.length;
-			logger.info('[LogoDownload] Found logos to download', { count: logoFiles.length });
+			logger.info({ count: logoFiles.length }, '[LogoDownload] Found logos to download');
 
 			// Download each logo
 			for (let i = 0; i < logoFiles.length; i++) {
@@ -155,10 +157,13 @@ export class LogoDownloadService extends EventEmitter {
 					});
 
 					if (!fileRes.ok) {
-						logger.warn('[LogoDownload] Failed to download file', {
-							path: file.path,
-							status: fileRes.status
-						});
+						logger.warn(
+							{
+								path: file.path,
+								status: fileRes.status
+							},
+							'[LogoDownload] Failed to download file'
+						);
 						continue;
 					}
 
@@ -173,10 +178,13 @@ export class LogoDownloadService extends EventEmitter {
 					// Also call callback if provided
 					onProgress?.({ ...this._progress });
 				} catch (err) {
-					logger.warn('[LogoDownload] Error downloading file', {
-						path: file.path,
-						error: String(err)
-					});
+					logger.warn(
+						{
+							path: file.path,
+							error: String(err)
+						},
+						'[LogoDownload] Error downloading file'
+					);
 				}
 			}
 
@@ -186,10 +194,13 @@ export class LogoDownloadService extends EventEmitter {
 			this.emit('completed', { ...this._progress });
 			onProgress?.({ ...this._progress });
 
-			logger.info('[LogoDownload] Download completed', {
-				total: this._progress.total,
-				downloaded: this._progress.downloaded
-			});
+			logger.info(
+				{
+					total: this._progress.total,
+					downloaded: this._progress.downloaded
+				},
+				'[LogoDownload] Download completed'
+			);
 		} catch (error) {
 			this._progress.status = 'error';
 			this._progress.error = error instanceof Error ? error.message : 'Unknown error';
@@ -218,7 +229,7 @@ export class LogoDownloadService extends EventEmitter {
 			invalidateLogoLibraryCache();
 			logger.info('[LogoDownload] All logos removed');
 		} catch (error) {
-			logger.error('[LogoDownload] Failed to remove logos', error);
+			logger.error({ err: error }, '[LogoDownload] Failed to remove logos');
 			throw error;
 		}
 	}

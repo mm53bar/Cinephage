@@ -15,6 +15,7 @@
 	import { parseProviderIds, parseGenreIds, extractYear } from '$lib/utils/discoverParams';
 	import { Search, Eye, EyeOff, X, Loader2 } from 'lucide-svelte';
 	import { getMediaTypeLabel } from '$lib/types/tmdb-guards';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	let { data } = $props();
 
@@ -114,7 +115,9 @@
 			searchResults = result.results;
 			searchPagination = result.pagination;
 		} catch (e) {
-			console.error('Search error:', e);
+			toasts.error('Search failed', {
+				description: e instanceof Error ? e.message : 'Search failed'
+			});
 			searchResults = [];
 		} finally {
 			isSearching = false;
@@ -312,7 +315,9 @@
 			}
 			currentPage = nextPage;
 		} catch (e) {
-			console.error('Failed to load more results', e);
+			toasts.error('Failed to load more results', {
+				description: e instanceof Error ? e.message : 'Failed to load more results'
+			});
 		} finally {
 			isLoadingMore = false;
 		}

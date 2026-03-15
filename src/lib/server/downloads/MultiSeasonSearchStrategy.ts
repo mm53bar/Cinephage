@@ -155,11 +155,14 @@ export class MultiSeasonSearchStrategy {
 			singleSeasonThreshold = this.DEFAULT_SINGLE_SEASON_THRESHOLD
 		} = options;
 
-		logger.info('[MultiSeasonSearch] Starting multi-season priority search', {
-			seriesId: seriesData.id,
-			title: seriesData.title,
-			episodeCount: episodesToSearch.length
-		});
+		logger.info(
+			{
+				seriesId: seriesData.id,
+				title: seriesData.title,
+				episodeCount: episodesToSearch.length
+			},
+			'[MultiSeasonSearch] Starting multi-season priority search'
+		);
 
 		// Group episodes by season
 		const episodesBySeason = this.groupEpisodesBySeason(episodesToSearch);
@@ -368,10 +371,13 @@ export class MultiSeasonSearchStrategy {
 			const missingPercent = (missingInSeason / totalInSeason) * 100;
 
 			if (missingPercent < singleSeasonThreshold) {
-				logger.debug('[MultiSeasonSearch] Skipping single season pack - not enough missing', {
-					season: seasonNumber,
-					missingPercent: missingPercent.toFixed(1)
-				});
+				logger.debug(
+					{
+						season: seasonNumber,
+						missingPercent: missingPercent.toFixed(1)
+					},
+					'[MultiSeasonSearch] Skipping single season pack - not enough missing'
+				);
 				continue;
 			}
 
@@ -515,14 +521,17 @@ export class MultiSeasonSearchStrategy {
 			percentComplete: 100
 		});
 
-		logger.info('[MultiSeasonSearch] Search completed', {
-			seriesId: seriesData.id,
-			totalSearched: episodesToSearch.length,
-			totalGrabbed: grabbedCount,
-			completeSeriesPacks,
-			multiSeasonPacks: multiSeasonPackCount,
-			singleSeasonPacks: singleSeasonPackCount
-		});
+		logger.info(
+			{
+				seriesId: seriesData.id,
+				totalSearched: episodesToSearch.length,
+				totalGrabbed: grabbedCount,
+				completeSeriesPacks,
+				multiSeasonPacks: multiSeasonPackCount,
+				singleSeasonPacks: singleSeasonPackCount
+			},
+			'[MultiSeasonSearch] Search completed'
+		);
 
 		return {
 			results,
@@ -686,10 +695,13 @@ export class MultiSeasonSearchStrategy {
 			return { grabbed: false, episodesCovered: [] };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[MultiSeasonSearch] Complete series search failed', {
-				seriesId: seriesData.id,
-				error: message
-			});
+			logger.error(
+				{
+					seriesId: seriesData.id,
+					error: message
+				},
+				'[MultiSeasonSearch] Complete series search failed'
+			);
 			return { grabbed: false, episodesCovered: [] };
 		}
 	}
@@ -809,12 +821,15 @@ export class MultiSeasonSearchStrategy {
 			return { grabbed: false, episodesCovered: [] };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[MultiSeasonSearch] Multi-season search failed', {
-				seriesId: seriesData.id,
-				startSeason,
-				endSeason,
-				error: message
-			});
+			logger.error(
+				{
+					seriesId: seriesData.id,
+					startSeason,
+					endSeason,
+					error: message
+				},
+				'[MultiSeasonSearch] Multi-season search failed'
+			);
 			return { grabbed: false, episodesCovered: [] };
 		}
 	}
@@ -922,11 +937,14 @@ export class MultiSeasonSearchStrategy {
 			return { grabbed: false, episodesCovered: [] };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[MultiSeasonSearch] Single season search failed', {
-				seriesId: seriesData.id,
-				season: seasonNumber,
-				error: message
-			});
+			logger.error(
+				{
+					seriesId: seriesData.id,
+					season: seasonNumber,
+					error: message
+				},
+				'[MultiSeasonSearch] Single season search failed'
+			);
 			return { grabbed: false, episodesCovered: [] };
 		}
 	}

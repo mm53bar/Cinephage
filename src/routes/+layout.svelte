@@ -30,6 +30,7 @@
 		Calendar,
 		Activity,
 		FileQuestion,
+		ScrollText,
 		LogOut,
 		Server,
 		Download
@@ -110,6 +111,7 @@
 			children: [
 				{ href: '/settings/general', label: 'General', icon: Settings },
 				{ href: '/settings/system', label: 'System', icon: Server },
+				{ href: '/settings/logs', label: 'Logs', icon: ScrollText },
 				{ href: '/settings/naming', label: 'Naming', icon: FileSignature },
 				{ href: '/settings/quality', label: 'Quality Settings', icon: Shield },
 				{ href: '/settings/integrations', label: 'Integrations', icon: Compass },

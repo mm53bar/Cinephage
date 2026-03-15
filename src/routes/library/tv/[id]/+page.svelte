@@ -305,6 +305,14 @@
 	} | null>(null);
 	let subtitleAutoSearchingEpisodes = new SvelteSet<string>();
 
+	function describeError(error: unknown, fallback: string): string {
+		return error instanceof Error ? error.message : fallback;
+	}
+
+	function showActionError(message: string, error: unknown): void {
+		toasts.error(message, { description: describeError(error, message) });
+	}
+
 	// Search progress store for auto-search
 	const searchProgress = createSearchProgress();
 
@@ -422,7 +430,7 @@
 				series.monitored = newValue;
 			}
 		} catch (error) {
-			console.error('Failed to update monitored status:', error);
+			showActionError('Failed to update monitored status', error);
 		} finally {
 			isSaving = false;
 		}
@@ -484,7 +492,7 @@
 				seasonsState = refreshedSeasons;
 			}
 		} catch (error) {
-			console.error('Failed to refresh series state:', error);
+			showActionError('Failed to refresh series details', error);
 		}
 	}
 
@@ -498,14 +506,14 @@
 			});
 
 			if (!response.ok) {
-				console.error('Failed to refresh series');
+				toasts.error('Failed to refresh series');
 				return;
 			}
 
 			// Read the streaming response
 			const reader = response.body?.getReader();
 			if (!reader) {
-				console.error('No response body');
+				toasts.error('Series refresh did not return a progress stream');
 				return;
 			}
 
@@ -541,7 +549,7 @@
 							} else if (eventType === 'complete' || eventData.type === 'complete') {
 								completed = true;
 							} else if (eventType === 'error' || eventData.type === 'error') {
-								console.error('Refresh error:', eventData.message);
+								toasts.error(eventData.message || 'Series refresh failed');
 							}
 						} catch {
 							// Ignore parse errors (e.g., heartbeat comments)
@@ -554,7 +562,7 @@
 				await refreshSeriesFromApi();
 			}
 		} catch (error) {
-			console.error('Failed to refresh series:', error);
+			showActionError('Failed to refresh series', error);
 		} finally {
 			isRefreshing = false;
 			refreshProgress = null;
@@ -584,7 +592,7 @@
 				isEditModalOpen = false;
 			}
 		} catch (error) {
-			console.error('Failed to update series:', error);
+			showActionError('Failed to update series', error);
 		} finally {
 			isSaving = false;
 		}
@@ -627,8 +635,7 @@
 				toasts.error('Failed to delete series', { description: result.error });
 			}
 		} catch (error) {
-			console.error('Failed to delete series:', error);
-			toasts.error('Failed to delete series');
+			showActionError('Failed to delete series', error);
 		} finally {
 			isDeleting = false;
 			isDeleteModalOpen = false;
@@ -681,8 +688,7 @@
 				toasts.error('Failed to delete season files', { description: result.error });
 			}
 		} catch (error) {
-			console.error('Failed to delete season:', error);
-			toasts.error('Failed to delete season');
+			showActionError('Failed to delete season', error);
 		} finally {
 			isDeletingSeason = false;
 			isSeasonDeleteModalOpen = false;
@@ -744,8 +750,7 @@
 				toasts.error('Failed to delete episode files', { description: result.error });
 			}
 		} catch (error) {
-			console.error('Failed to delete episode:', error);
-			toasts.error('Failed to delete episode');
+			showActionError('Failed to delete episode', error);
 		} finally {
 			isDeletingEpisode = false;
 			isEpisodeDeleteModalOpen = false;
@@ -773,7 +778,7 @@
 				);
 			}
 		} catch (error) {
-			console.error('Failed to update season monitored status:', error);
+			showActionError('Failed to update season monitored status', error);
 		}
 	}
 
@@ -794,7 +799,7 @@
 				}));
 			}
 		} catch (error) {
-			console.error('Failed to update episode monitored status:', error);
+			showActionError('Failed to update episode monitored status', error);
 		}
 	}
 
@@ -939,7 +944,7 @@
 				missingSearchResult = null;
 			}, 10000);
 		} catch (error) {
-			console.error('Failed to search missing episodes:', error);
+			showActionError('Failed to search missing episodes', error);
 		} finally {
 			searchingMissing = false;
 			missingSearchProgress = null;
@@ -1001,7 +1006,7 @@
 				}
 			}, 5000);
 		} catch (error) {
-			console.error('Bulk search failed:', error);
+			showActionError('Bulk search failed', error);
 		} finally {
 			for (const id of episodeIds) {
 				autoSearchingEpisodes.delete(id);
@@ -1080,7 +1085,7 @@
 				appendSubtitleToEpisode(episode.id, result.subtitle);
 			}
 		} catch (error) {
-			console.error('Failed to auto-search subtitles:', error);
+			showActionError('Failed to auto-search subtitles', error);
 		} finally {
 			subtitleAutoSearchingEpisodes.delete(episode.id);
 		}

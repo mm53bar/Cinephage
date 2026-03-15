@@ -103,11 +103,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			// Download best match
 			const downloadResult = await downloadService.downloadForMovie(validated.movieId, bestResult);
 
-			logger.info('[AutoSearch] Downloaded subtitle for movie', {
-				movieId: validated.movieId,
-				language: bestResult.language,
-				score: bestResult.matchScore
-			});
+			logger.info(
+				{
+					movieId: validated.movieId,
+					language: bestResult.language,
+					score: bestResult.matchScore
+				},
+				'[AutoSearch] Downloaded subtitle for movie'
+			);
 
 			return json({
 				success: true,
@@ -183,11 +186,14 @@ export const POST: RequestHandler = async ({ request }) => {
 				bestResult
 			);
 
-			logger.info('[AutoSearch] Downloaded subtitle for episode', {
-				episodeId: validated.episodeId,
-				language: bestResult.language,
-				score: bestResult.matchScore
-			});
+			logger.info(
+				{
+					episodeId: validated.episodeId,
+					language: bestResult.language,
+					score: bestResult.matchScore
+				},
+				'[AutoSearch] Downloaded subtitle for episode'
+			);
 
 			return json({
 				success: true,

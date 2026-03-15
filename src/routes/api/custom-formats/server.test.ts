@@ -32,13 +32,17 @@ vi.mock('$lib/server/db', () => {
 	};
 });
 
+const mockLogger = vi.hoisted(() => ({
+	info: vi.fn(),
+	error: vi.fn(),
+	warn: vi.fn(),
+	debug: vi.fn(),
+	child: vi.fn().mockReturnThis()
+}));
+
 vi.mock('$lib/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		error: vi.fn(),
-		warn: vi.fn(),
-		debug: vi.fn()
-	}
+	logger: mockLogger,
+	createChildLogger: vi.fn(() => mockLogger)
 }));
 
 // Import handlers after mocks are set up

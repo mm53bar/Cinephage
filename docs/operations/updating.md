@@ -197,8 +197,11 @@ sudo systemctl status cinephage
 ### 4. Check Logs
 
 ```bash
-# Look for errors
-grep -i error logs/cinephage.log | tail -20
+# Docker
+docker logs cinephage --tail 50 2>&1 | grep -i error
+
+# Manual / systemd
+sudo journalctl -u cinephage -n 50 -p err
 ```
 
 ---

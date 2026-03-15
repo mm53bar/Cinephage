@@ -12,6 +12,7 @@
 		Settings2,
 		Globe
 	} from 'lucide-svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	interface SolverHealth {
 		available: boolean;
@@ -107,7 +108,9 @@
 				settings = data.settings;
 			}
 		} catch (error) {
-			console.error('Failed to load captcha solver data:', error);
+			toasts.error('Failed to load captcha solver data', {
+				description: error instanceof Error ? error.message : 'Failed to load captcha solver data'
+			});
 		} finally {
 			loading = false;
 		}
@@ -203,7 +206,9 @@
 				await loadData();
 			}
 		} catch (error) {
-			console.error('Failed to clear cache:', error);
+			toasts.error('Failed to clear captcha cache', {
+				description: error instanceof Error ? error.message : 'Failed to clear captcha cache'
+			});
 		} finally {
 			clearing = false;
 		}

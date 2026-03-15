@@ -204,11 +204,11 @@
 					connectToLogoDownloadStream();
 				}
 			} else {
-				console.error('Server error:', data.error);
+				toasts.error(data.error || 'Failed to start logo download');
 				downloadingLogos = false;
 			}
 		} catch (err) {
-			console.error('Download error:', err);
+			toasts.error(err instanceof Error ? err.message : 'Failed to start logo download');
 			downloadingLogos = false;
 		}
 	}
@@ -562,7 +562,7 @@
 
 				await loadData();
 			} catch (e) {
-				console.error('Failed to update category:', e);
+				toasts.error(e instanceof Error ? e.message : 'Failed to update category');
 			}
 		}
 
@@ -603,7 +603,7 @@
 
 			await loadData();
 		} catch (e) {
-			console.error('Failed to reorder:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to reorder channels');
 		}
 	}
 
@@ -738,7 +738,7 @@
 
 			await loadData();
 		} catch (e) {
-			console.error('Failed to remove channel(s):', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to remove channel selection');
 		} finally {
 			bulkActionLoading = false;
 			bulkAction = null;
@@ -760,14 +760,14 @@
 			});
 
 			if (!response.ok) {
-				console.error('Inline edit failed');
+				toasts.error('Failed to save inline edit');
 				return false;
 			}
 
 			await loadData();
 			return true;
 		} catch (e) {
-			console.error('Inline edit error:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to save inline edit');
 			return false;
 		}
 	}
@@ -814,7 +814,6 @@
 				`Updated category for ${selectedCountAtAction} channel${selectedCountAtAction === 1 ? '' : 's'}`
 			);
 		} catch (e) {
-			console.error('Failed to bulk update categories:', e);
 			toasts.error(e instanceof Error ? e.message : 'Failed to update categories');
 		} finally {
 			bulkActionLoading = false;
@@ -856,7 +855,6 @@
 				toasts.success('No cleaned names were applied');
 			}
 		} catch (e) {
-			console.error('Failed to bulk apply cleaned names:', e);
 			toasts.error(e instanceof Error ? e.message : 'Failed to apply cleaned names');
 		} finally {
 			bulkActionLoading = false;

@@ -8,7 +8,7 @@ export async function POST({ request }: { request: Request }) {
 		const apply = body?.apply === true;
 		const sampleLimit = typeof body?.sampleLimit === 'number' ? body.sampleLimit : 50;
 
-		logger.info('[API] Starting release metadata backfill', { apply, sampleLimit });
+		logger.info({ apply, sampleLimit }, '[API] Starting release metadata backfill');
 		const result = await backfillReleaseMetadata({ apply, sampleLimit });
 
 		return json({

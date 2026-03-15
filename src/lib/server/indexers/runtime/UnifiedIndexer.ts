@@ -420,7 +420,7 @@ export class UnifiedIndexer implements IIndexer {
 			return await this.executeHttpSearch(criteria, startTime);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			this.log.error('Search failed', { error: message, criteria });
+			this.log.error({ error: message, criteria }, 'Search failed');
 			throw error;
 		}
 	}
@@ -436,7 +436,7 @@ export class UnifiedIndexer implements IIndexer {
 			throw new Error('Database executor not initialized for internal streaming indexer');
 		}
 
-		this.log.debug('Executing database search', { criteria });
+		this.log.debug({ criteria }, 'Executing database search');
 
 		const results = await this.dbExecutor.execute(criteria, {
 			indexerId: this.id,
@@ -447,10 +447,13 @@ export class UnifiedIndexer implements IIndexer {
 		});
 
 		const duration = Date.now() - startTime;
-		this.log.debug('Database search completed', {
-			resultCount: results.length,
-			durationMs: duration
-		});
+		this.log.debug(
+			{
+				resultCount: results.length,
+				durationMs: duration
+			},
+			'Database search completed'
+		);
 
 		return results;
 	}
@@ -471,11 +474,11 @@ export class UnifiedIndexer implements IIndexer {
 		// Build requests
 		const requests = this.requestBuilder.buildSearchRequests(criteria);
 		if (requests.length === 0) {
-			this.log.warn('No search requests generated', { criteria });
+			this.log.warn({ criteria }, 'No search requests generated');
 			return [];
 		}
 
-		this.log.debug('Built search requests', { count: requests.length });
+		this.log.debug({ count: requests.length }, 'Built search requests');
 
 		// Execute requests and collect results
 		const allResults: ReleaseResult[] = [];
@@ -483,14 +486,14 @@ export class UnifiedIndexer implements IIndexer {
 		const requestErrors: string[] = [];
 
 		for (const request of requests) {
-			this.log.debug('Executing search request', { url: request.url, method: request.method });
+			this.log.debug({ url: request.url, method: request.method }, 'Executing search request');
 			try {
 				const results = await this.executeSearchRequest(request);
 				allResults.push(...results);
 				successfulRequests += 1;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				this.log.warn('Search request failed', { url: request.url, error: message });
+				this.log.warn({ url: request.url, error: message }, 'Search request failed');
 				requestErrors.push(this.normalizeTestRequestError(message));
 			}
 		}
@@ -503,10 +506,13 @@ export class UnifiedIndexer implements IIndexer {
 		}
 
 		const duration = Date.now() - startTime;
-		this.log.debug('HTTP search completed', {
-			resultCount: allResults.length,
-			durationMs: duration
-		});
+		this.log.debug(
+			{
+				resultCount: allResults.length,
+				durationMs: duration
+			},
+			'HTTP search completed'
+		);
 
 		return allResults;
 	}
@@ -523,11 +529,14 @@ export class UnifiedIndexer implements IIndexer {
 	}): Promise<ReleaseResult[]> {
 		this.http.setCookies(this.cookies);
 
-		this.log.info('Executing search request', {
-			url: request.url,
-			method: request.method,
-			indexer: this.name
-		});
+		this.log.info(
+			{
+				url: request.url,
+				method: request.method,
+				indexer: this.name
+			},
+			'Executing search request'
+		);
 
 		const response =
 			request.method === 'POST'
@@ -540,13 +549,16 @@ export class UnifiedIndexer implements IIndexer {
 						followRedirects: this.definition.followredirect ?? true
 					});
 
-		this.log.info('Search response received', {
-			status: response.status,
-			url: response.url,
-			bodyLength: response.body.length,
-			bodyPreview: response.body.substring(0, 500),
-			indexer: this.name
-		});
+		this.log.info(
+			{
+				status: response.status,
+				url: response.url,
+				bodyLength: response.body.length,
+				bodyPreview: response.body.substring(0, 500),
+				indexer: this.name
+			},
+			'Search response received'
+		);
 
 		this.http.parseAndStoreCookies(response.headers);
 
@@ -627,11 +639,14 @@ export class UnifiedIndexer implements IIndexer {
 	 * Parse a response into release results
 	 */
 	private parseResponse(content: string, searchPath: unknown): ReleaseResult[] {
-		this.log.info('Parsing search response', {
-			indexer: this.name,
-			contentLength: content.length,
-			contentPreview: content.substring(0, 200)
-		});
+		this.log.info(
+			{
+				indexer: this.name,
+				contentLength: content.length,
+				contentPreview: content.substring(0, 200)
+			},
+			'Parsing search response'
+		);
 
 		const parseResult = this.responseParser.parse(
 			content,
@@ -644,14 +659,17 @@ export class UnifiedIndexer implements IIndexer {
 			}
 		);
 
-		this.log.info('Parse complete', {
-			indexer: this.name,
-			releasesFound: parseResult.releases.length,
-			errors: parseResult.errors?.length ?? 0
-		});
+		this.log.info(
+			{
+				indexer: this.name,
+				releasesFound: parseResult.releases.length,
+				errors: parseResult.errors?.length ?? 0
+			},
+			'Parse complete'
+		);
 
 		if (parseResult.errors && parseResult.errors.length > 0) {
-			this.log.warn('Parse had errors', { errors: parseResult.errors });
+			this.log.warn({ errors: parseResult.errors }, 'Parse had errors');
 		}
 
 		return parseResult.releases;
@@ -680,33 +698,39 @@ export class UnifiedIndexer implements IIndexer {
 		if (hasStoredCookies) {
 			this.cookies = this.authManager.getCookies();
 			this.isLoggedIn = true;
-			this.log.info('Loaded stored cookies', {
-				indexer: this.name,
-				cookieCount: Object.keys(this.cookies).length,
-				cookieNames: Object.keys(this.cookies)
-			});
+			this.log.info(
+				{
+					indexer: this.name,
+					cookieCount: Object.keys(this.cookies).length,
+					cookieNames: Object.keys(this.cookies)
+				},
+				'Loaded stored cookies'
+			);
 			return;
 		}
 
-		this.log.info('Performing login', { indexer: this.name });
+		this.log.info({ indexer: this.name }, 'Performing login');
 		const loginResult = await this.authManager.login(context);
 
 		if (!loginResult.success) {
-			this.log.error('Login failed', { indexer: this.name, error: loginResult.error });
+			this.log.error({ indexer: this.name, error: loginResult.error }, 'Login failed');
 			throw new Error(`Login failed: ${loginResult.error}`);
 		}
 
 		this.cookies = loginResult.cookies;
 		this.isLoggedIn = true;
 
-		this.log.info('Login successful', {
-			indexer: this.name,
-			cookieCount: Object.keys(this.cookies).length,
-			cookieNames: Object.keys(this.cookies)
-		});
+		this.log.info(
+			{
+				indexer: this.name,
+				cookieCount: Object.keys(this.cookies).length,
+				cookieNames: Object.keys(this.cookies)
+			},
+			'Login successful'
+		);
 
 		await this.authManager.saveCookies(context);
-		this.log.debug('Cookies saved', { indexer: this.name });
+		this.log.debug({ indexer: this.name }, 'Cookies saved');
 	}
 
 	/**
@@ -762,13 +786,16 @@ export class UnifiedIndexer implements IIndexer {
 				throw new Error(summary);
 			}
 
-			this.log.info('Indexer test successful', {
-				requestCount: successfulRequests,
-				resultCount
-			});
+			this.log.info(
+				{
+					requestCount: successfulRequests,
+					resultCount
+				},
+				'Indexer test successful'
+			);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			this.log.error('Indexer test failed', { error: message });
+			this.log.error({ error: message }, 'Indexer test failed');
 			throw error instanceof Error ? error : new Error(message);
 		}
 	}
@@ -931,10 +958,13 @@ export class UnifiedIndexer implements IIndexer {
 		if (idMatch) {
 			const baseUrl = this.requestBuilder.getBaseUrl();
 			const reconstructed = `${baseUrl}/api?t=get&id=${idMatch[1]}&apikey=${apikey}`;
-			this.log.debug('Reconstructed redacted download URL', {
-				original: redactedUrl.substring(0, 50) + '...',
-				hasApiKey: true
-			});
+			this.log.debug(
+				{
+					original: redactedUrl.substring(0, 50) + '...',
+					hasApiKey: true
+				},
+				'Reconstructed redacted download URL'
+			);
 			return reconstructed;
 		}
 
@@ -955,7 +985,7 @@ export class UnifiedIndexer implements IIndexer {
 	): Promise<IndexerDownloadResult> {
 		const startTime = Date.now();
 
-		this.log.debug('Downloading content', { url: url.substring(0, 100) });
+		this.log.debug({ url: url.substring(0, 100) }, 'Downloading content');
 
 		try {
 			await this.ensureLoggedIn();
@@ -987,12 +1017,15 @@ export class UnifiedIndexer implements IIndexer {
 			// a direct torrent/magnet link. The DownloadHandler will fetch the page and extract the
 			// actual download URL using CSS selectors defined in the indexer YAML definition.
 			const needsRes = this.downloadHandler.needsResolution();
-			this.log.debug('Checking if download needs resolution', {
-				needsResolution: needsRes,
-				hasDownloadBlock: !!this.definition.download,
-				hasSelectors: !!this.definition.download?.selectors?.length,
-				selectorsCount: this.definition.download?.selectors?.length ?? 0
-			});
+			this.log.debug(
+				{
+					needsResolution: needsRes,
+					hasDownloadBlock: !!this.definition.download,
+					hasSelectors: !!this.definition.download?.selectors?.length,
+					selectorsCount: this.definition.download?.selectors?.length ?? 0
+				},
+				'Checking if download needs resolution'
+			);
 			if (needsRes) {
 				const context = {
 					baseUrl: this.requestBuilder.getBaseUrl(),
@@ -1004,29 +1037,38 @@ export class UnifiedIndexer implements IIndexer {
 					releaseTitle: options?.releaseTitle
 				};
 
-				this.log.debug('Calling resolveDownload', {
-					url: url.substring(0, 80),
-					baseUrl: context.baseUrl,
-					hasSettings: Object.keys(context.settings).length > 0,
-					settingsKeys: Object.keys(context.settings)
-				});
+				this.log.debug(
+					{
+						url: url.substring(0, 80),
+						baseUrl: context.baseUrl,
+						hasSettings: Object.keys(context.settings).length > 0,
+						settingsKeys: Object.keys(context.settings)
+					},
+					'Calling resolveDownload'
+				);
 
 				const resolution = await this.downloadHandler.resolveDownload(url, context);
 
-				this.log.debug('Resolution result', {
-					success: resolution.success,
-					hasMagnetUrl: !!resolution.magnetUrl,
-					hasRequestUrl: !!resolution.request?.url,
-					error: resolution.error
-				});
+				this.log.debug(
+					{
+						success: resolution.success,
+						hasMagnetUrl: !!resolution.magnetUrl,
+						hasRequestUrl: !!resolution.request?.url,
+						error: resolution.error
+					},
+					'Resolution result'
+				);
 
 				if (resolution.success) {
 					// If resolution returned a magnet URL, use it directly
 					if (resolution.magnetUrl) {
-						this.log.debug('Resolved download URL to magnet', {
-							original: url.substring(0, 50),
-							magnetHash: resolution.magnetUrl.substring(0, 60)
-						});
+						this.log.debug(
+							{
+								original: url.substring(0, 50),
+								magnetHash: resolution.magnetUrl.substring(0, 60)
+							},
+							'Resolved download URL to magnet'
+						);
 						const { extractInfoHashFromMagnet } =
 							await import('$lib/server/downloadClients/utils/torrentParser');
 						const infoHash = await extractInfoHashFromMagnet(resolution.magnetUrl);
@@ -1042,9 +1084,12 @@ export class UnifiedIndexer implements IIndexer {
 					// use it directly — avoids a redundant second fetch that would fail with
 					// one-time download tokens (e.g., nCore's &key= parameter)
 					if (resolution.torrentData) {
-						this.log.debug('Using cached torrent data from resolution', {
-							dataSize: resolution.torrentData.length
-						});
+						this.log.debug(
+							{
+								dataSize: resolution.torrentData.length
+							},
+							'Using cached torrent data from resolution'
+						);
 
 						if (this.protocol === 'usenet') {
 							return {
@@ -1085,10 +1130,13 @@ export class UnifiedIndexer implements IIndexer {
 
 					// If resolution returned a different URL, use that for fetching
 					if (resolution.request?.url && resolution.request.url !== url) {
-						this.log.debug('Resolved download URL', {
-							original: url.substring(0, 50),
-							resolved: resolution.request.url.substring(0, 50)
-						});
+						this.log.debug(
+							{
+								original: url.substring(0, 50),
+								resolved: resolution.request.url.substring(0, 50)
+							},
+							'Resolved download URL'
+						);
 						url = resolution.request.url;
 
 						// Check if the resolved URL is a magnet link
@@ -1105,9 +1153,12 @@ export class UnifiedIndexer implements IIndexer {
 						}
 					}
 				} else {
-					this.log.warn('Download URL resolution failed, trying direct fetch', {
-						error: resolution.error
-					});
+					this.log.warn(
+						{
+							error: resolution.error
+						},
+						'Download URL resolution failed, trying direct fetch'
+					);
 					// Continue with original URL as fallback
 				}
 			}
@@ -1226,7 +1277,7 @@ export class UnifiedIndexer implements IIndexer {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			this.log.error('Download failed', { error: message });
+			this.log.error({ error: message }, 'Download failed');
 			return {
 				success: false,
 				error: message,
@@ -1244,7 +1295,7 @@ export class UnifiedIndexer implements IIndexer {
 
 		if (!limiter.canProceed()) {
 			const waitTime = limiter.getWaitTime();
-			this.log.debug('Rate limited, waiting', { waitTimeMs: waitTime });
+			this.log.debug({ waitTimeMs: waitTime }, 'Rate limited, waiting');
 			await this.delay(waitTime);
 		}
 

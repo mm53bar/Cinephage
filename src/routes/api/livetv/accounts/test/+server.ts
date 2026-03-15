@@ -170,10 +170,13 @@ export const POST: RequestHandler = async ({ request }) => {
 	} catch (error) {
 		// Validation errors
 		if (error instanceof ValidationError) {
-			logger.warn('[API] Live TV account test rejected due to invalid input', {
-				code: error.code,
-				statusCode: error.statusCode
-			});
+			logger.warn(
+				{
+					code: error.code,
+					statusCode: error.statusCode
+				},
+				'[API] Live TV account test rejected due to invalid input'
+			);
 
 			return json(
 				{

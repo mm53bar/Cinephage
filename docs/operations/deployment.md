@@ -354,9 +354,15 @@ readinessProbe:
 
 ## Monitoring
 
-### Log Files
+### Application Logs
 
-Logs are stored in the configured log directory (default: `logs/`).
+Cinephage writes logs to stdout/stderr.
+
+- Docker: `docker logs cinephage`
+- systemd: `journalctl -u cinephage`
+- Kubernetes: `kubectl logs`
+
+Use your container runtime or service manager for retention and rotation.
 
 ### Systemd Logs
 

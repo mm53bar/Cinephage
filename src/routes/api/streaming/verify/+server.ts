@@ -15,7 +15,7 @@ import { logger } from '$lib/logging';
 import { z } from 'zod';
 import { resolveAndValidateUrl } from '$lib/server/http/ssrf-protection';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /**
  * Request schema for stream verification
@@ -77,18 +77,21 @@ export const POST: RequestHandler = async ({ request }) => {
 		// SSRF protection: validate URL before making any requests
 		const safetyCheck = await resolveAndValidateUrl(url);
 		if (!safetyCheck.safe) {
-			logger.warn('Blocked unsafe verify URL', {
-				url,
-				reason: safetyCheck.reason,
-				...streamLog
-			});
+			logger.warn(
+				{
+					url,
+					reason: safetyCheck.reason,
+					...streamLog
+				},
+				'Blocked unsafe verify URL'
+			);
 			return json(
 				{ success: false, error: 'URL not allowed', reason: safetyCheck.reason },
 				{ status: 403 }
 			);
 		}
 
-		logger.debug('Verifying stream URL', { url, quick, timeout, ...streamLog });
+		logger.debug({ url, quick, timeout, ...streamLog }, 'Verifying stream URL');
 
 		// Quick validation just checks if URL is reachable
 		if (quick) {
@@ -131,12 +134,15 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		};
 
-		logger.debug('Stream verification complete', {
-			url,
-			valid: validation.valid,
-			playable: validation.playable,
-			...streamLog
-		});
+		logger.debug(
+			{
+				url,
+				valid: validation.valid,
+				playable: validation.playable,
+				...streamLog
+			},
+			'Stream verification complete'
+		);
 
 		return json(response);
 	} catch (error) {

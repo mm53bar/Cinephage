@@ -113,13 +113,17 @@ vi.mock('$lib/server/db/index.js', () => {
 	};
 });
 
+const mockLogger = vi.hoisted(() => ({
+	info: vi.fn(),
+	error: vi.fn(),
+	warn: vi.fn(),
+	debug: vi.fn(),
+	child: vi.fn().mockReturnThis()
+}));
+
 vi.mock('$lib/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		error: vi.fn(),
-		warn: vi.fn(),
-		debug: vi.fn()
-	}
+	logger: mockLogger,
+	createChildLogger: vi.fn(() => mockLogger)
 }));
 
 vi.mock('$lib/server/subtitles/services/SubtitleSearchService.js', () => ({

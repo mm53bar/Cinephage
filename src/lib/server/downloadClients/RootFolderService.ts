@@ -8,7 +8,9 @@ import { rootFolders as rootFoldersTable } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { ValidationError } from '$lib/errors';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 import {
 	findOverlappingRootFolder,
 	getRootFolderOverlapMessage
@@ -133,13 +135,16 @@ export class RootFolderService {
 			createdAt: now
 		});
 
-		logger.info('Root folder created', {
-			id,
-			name: input.name,
-			path: input.path,
-			readOnly: input.readOnly ?? false,
-			preserveSymlinks: input.preserveSymlinks ?? false
-		});
+		logger.info(
+			{
+				id,
+				name: input.name,
+				path: input.path,
+				readOnly: input.readOnly ?? false,
+				preserveSymlinks: input.preserveSymlinks ?? false
+			},
+			'Root folder created'
+		);
 
 		// Trigger initial scan for the new folder (non-blocking)
 		const scheduler = getLibraryScheduler();
@@ -147,10 +152,13 @@ export class RootFolderService {
 
 		// Start watching this folder for changes
 		libraryWatcherService.watchFolder(id, input.path).catch((error) => {
-			logger.warn('Failed to start watching new folder', {
-				id,
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					id,
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'Failed to start watching new folder'
+			);
 		});
 
 		const created = await this.getFolder(id);
@@ -207,7 +215,7 @@ export class RootFolderService {
 
 		await db.update(rootFoldersTable).set(updateData).where(eq(rootFoldersTable.id, id));
 
-		logger.info('Root folder updated', { id });
+		logger.info({ id }, 'Root folder updated');
 
 		const updated = await this.getFolder(id);
 		if (!updated) {
@@ -225,7 +233,7 @@ export class RootFolderService {
 		await libraryWatcherService.unwatchFolder(id);
 
 		await db.delete(rootFoldersTable).where(eq(rootFoldersTable.id, id));
-		logger.info('Root folder deleted', { id });
+		logger.info({ id }, 'Root folder deleted');
 	}
 
 	/**
@@ -298,7 +306,7 @@ export class RootFolderService {
 			// Check if writable by actually attempting to write a test file
 			const isWritable = await this.testWriteAccess(normalizedPath);
 			if (!isWritable) {
-				logger.warn('Write test failed for path', { path: normalizedPath });
+				logger.warn({ path: normalizedPath }, 'Write test failed for path');
 				return {
 					valid: false,
 					exists: true,
@@ -397,11 +405,14 @@ export class RootFolderService {
 					})
 					.where(eq(rootFoldersTable.id, folder.id));
 			} catch (error) {
-				logger.warn('Failed to refresh free space for folder', {
-					folderId: folder.id,
-					path: folder.path,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						folderId: folder.id,
+						path: folder.path,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to refresh free space for folder'
+				);
 			}
 		}
 	}
@@ -432,12 +443,15 @@ export class RootFolderService {
 			return true;
 		} catch (err) {
 			const errObj = err as NodeJS.ErrnoException;
-			logger.warn('testWriteAccess failed', {
-				path: dirPath,
-				testDir,
-				errorCode: errObj.code,
-				errorMessage: errObj.message
-			});
+			logger.warn(
+				{
+					path: dirPath,
+					testDir,
+					errorCode: errObj.code,
+					errorMessage: errObj.message
+				},
+				'testWriteAccess failed'
+			);
 			// Attempt cleanup in case mkdir succeeded but rmdir failed
 			if (testDir) {
 				try {

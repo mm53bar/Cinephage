@@ -41,9 +41,10 @@ export const GET: RequestHandler = async () => {
 				send('dashboard:recentlyAdded', recentlyAdded);
 				send('dashboard:missingEpisodes', missingEpisodes);
 			} catch (error) {
-				logger.error('[DashboardStream] Failed to fetch dashboard update', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error(
+					{ err: error, component: 'DashboardStream', logDomain: 'http' },
+					'[DashboardStream] Failed to fetch dashboard update'
+				);
 			}
 		};
 
@@ -58,9 +59,10 @@ export const GET: RequestHandler = async () => {
 
 				send('dashboard:recentActivity', activities);
 			} catch (error) {
-				logger.error('[DashboardStream] Failed to fetch recent history', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.error(
+					{ err: error, component: 'DashboardStream', logDomain: 'http' },
+					'[DashboardStream] Failed to fetch recent history'
+				);
 			}
 		};
 

@@ -23,12 +23,12 @@ export const POST: RequestHandler = async ({ url }) => {
 			const epgService = getEpgService();
 
 			if (accountId) {
-				logger.info('[EPG] Starting background sync for account', { accountId });
+				logger.info({ accountId }, '[EPG] Starting background sync for account');
 				liveTvEvents.emitEpgSyncStarted(accountId);
 				try {
 					await epgService.syncAccount(accountId);
 					liveTvEvents.emitEpgSyncCompleted(accountId);
-					logger.info('[EPG] Background sync complete for account', { accountId });
+					logger.info({ accountId }, '[EPG] Background sync complete for account');
 				} catch (err) {
 					liveTvEvents.emitEpgSyncFailed(
 						accountId,
@@ -44,11 +44,14 @@ export const POST: RequestHandler = async ({ url }) => {
 					liveTvEvents.emitEpgSyncCompleted();
 					const successful = results.filter((r) => r.success).length;
 					const totalAdded = results.reduce((sum, r) => sum + r.programsAdded, 0);
-					logger.info('[EPG] Background sync complete', {
-						accounts: results.length,
-						successful,
-						totalAdded
-					});
+					logger.info(
+						{
+							accounts: results.length,
+							successful,
+							totalAdded
+						},
+						'[EPG] Background sync complete'
+					);
 				} catch (err) {
 					liveTvEvents.emitEpgSyncFailed(
 						undefined,
@@ -58,10 +61,13 @@ export const POST: RequestHandler = async ({ url }) => {
 				}
 			}
 		} catch (error) {
-			logger.error('[EPG] Background sync failed', {
-				accountId,
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					accountId,
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'[EPG] Background sync failed'
+			);
 		}
 	});
 

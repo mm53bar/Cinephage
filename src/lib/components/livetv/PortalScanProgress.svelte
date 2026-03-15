@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { X, Loader2, StopCircle, CheckCircle2, XCircle, Search } from 'lucide-svelte';
 	import { onMount, onDestroy } from 'svelte';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	interface WorkerState {
 		id: string;
@@ -127,7 +128,7 @@
 			}
 			await fetchWorker();
 		} catch (e) {
-			console.error('Failed to cancel:', e);
+			toasts.error(e instanceof Error ? e.message : 'Failed to cancel scan');
 		} finally {
 			cancelling = false;
 		}

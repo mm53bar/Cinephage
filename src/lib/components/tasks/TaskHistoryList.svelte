@@ -15,6 +15,7 @@
 		Ban
 	} from 'lucide-svelte';
 	import type { TaskHistoryEntry } from '$lib/types/task';
+	import { toasts } from '$lib/stores/toast.svelte';
 
 	interface ActivityItem {
 		id: string;
@@ -81,7 +82,7 @@
 				activityCache.set(entryId, data.activity ?? []);
 			}
 		} catch (error) {
-			console.error('Failed to load activity:', error);
+			toasts.error(error instanceof Error ? error.message : 'Failed to load activity');
 		} finally {
 			activityLoading.delete(entryId);
 		}

@@ -8,8 +8,10 @@
 import { db } from '$lib/server/db';
 import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { randomUUID } from 'crypto';
+
+const logger = createChildLogger({ logDomain: 'livetv' as const });
 import type {
 	LiveTvProvider,
 	AuthResult,
@@ -71,10 +73,13 @@ export class StalkerProvider implements LiveTvProvider {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			logger.error('[StalkerProvider] Authentication failed', {
-				accountId: account.id,
-				error: message
-			});
+			logger.error(
+				{
+					accountId: account.id,
+					error: message
+				},
+				'[StalkerProvider] Authentication failed'
+			);
 			return {
 				success: false,
 				error: message
@@ -97,10 +102,13 @@ export class StalkerProvider implements LiveTvProvider {
 			return result;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			logger.error('[StalkerProvider] Connection test failed', {
-				accountId: account.id,
-				error: message
-			});
+			logger.error(
+				{
+					accountId: account.id,
+					error: message
+				},
+				'[StalkerProvider] Connection test failed'
+			);
 			return {
 				success: false,
 				error: message
@@ -291,15 +299,18 @@ export class StalkerProvider implements LiveTvProvider {
 
 			const duration = Date.now() - startTime;
 
-			logger.info('[StalkerProvider] Channel sync completed', {
-				accountId,
-				categoriesAdded,
-				categoriesUpdated,
-				channelsAdded,
-				channelsUpdated,
-				channelsRemoved,
-				duration
-			});
+			logger.info(
+				{
+					accountId,
+					categoriesAdded,
+					categoriesUpdated,
+					channelsAdded,
+					channelsUpdated,
+					channelsRemoved,
+					duration
+				},
+				'[StalkerProvider] Channel sync completed'
+			);
 
 			return {
 				success: true,
@@ -314,7 +325,7 @@ export class StalkerProvider implements LiveTvProvider {
 			const message = error instanceof Error ? error.message : String(error);
 			const duration = Date.now() - startTime;
 
-			logger.error('[StalkerProvider] Channel sync failed', { accountId, error: message });
+			logger.error({ accountId, err: error }, '[StalkerProvider] Channel sync failed');
 
 			// Update account sync status
 			await db
@@ -399,17 +410,23 @@ export class StalkerProvider implements LiveTvProvider {
 			// to allow raw TS passthrough.
 			if (url.includes('extension=ts') && format !== 'ts') {
 				url = url.replace('extension=ts', 'extension=m3u8');
-				logger.debug('[StalkerProvider] Rewrote stream URL from TS to HLS', {
-					channelId: channel.id,
-					accountId: account.id
-				});
+				logger.debug(
+					{
+						channelId: channel.id,
+						accountId: account.id
+					},
+					'[StalkerProvider] Rewrote stream URL from TS to HLS'
+				);
 			}
 
 			if (format === 'ts' && url.includes('extension=ts')) {
-				logger.debug('[StalkerProvider] Keeping TS format as requested', {
-					channelId: channel.id,
-					accountId: account.id
-				});
+				logger.debug(
+					{
+						channelId: channel.id,
+						accountId: account.id
+					},
+					'[StalkerProvider] Keeping TS format as requested'
+				);
 			}
 
 			// Detect stream type
@@ -438,11 +455,14 @@ export class StalkerProvider implements LiveTvProvider {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			logger.error('[StalkerProvider] Stream resolution failed', {
-				accountId: account.id,
-				channelId: channel.id,
-				error: message
-			});
+			logger.error(
+				{
+					accountId: account.id,
+					channelId: channel.id,
+					err: error
+				},
+				'[StalkerProvider] Stream resolution failed'
+			);
 
 			return {
 				success: false,
@@ -515,8 +535,7 @@ export class StalkerProvider implements LiveTvProvider {
 
 			return programs;
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			logger.error('[StalkerProvider] EPG fetch failed', { accountId: account.id, error: message });
+			logger.error({ accountId: account.id, err: error }, '[StalkerProvider] EPG fetch failed');
 			return [];
 		}
 	}

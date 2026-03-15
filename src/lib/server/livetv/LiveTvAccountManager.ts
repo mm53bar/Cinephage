@@ -299,11 +299,14 @@ export class LiveTvAccountManager implements BackgroundService {
 
 		const [record] = await db.insert(livetvAccounts).values(insertData).returning();
 
-		logger.info('Created account', {
-			id: record.id,
-			name: record.name,
-			providerType: record.providerType
-		});
+		logger.info(
+			{
+				id: record.id,
+				name: record.name,
+				providerType: record.providerType
+			},
+			'Created account'
+		);
 
 		liveTvEvents.emitAccountCreated(record.id);
 		return recordToAccount(record);
@@ -372,7 +375,7 @@ export class LiveTvAccountManager implements BackgroundService {
 			return null;
 		}
 
-		logger.info('Updated account', { id, name: record.name });
+		logger.info({ id, name: record.name }, 'Updated account');
 		liveTvEvents.emitAccountUpdated(id);
 		return recordToAccount(record);
 	}
@@ -385,7 +388,7 @@ export class LiveTvAccountManager implements BackgroundService {
 		const deleted = (result.changes ?? 0) > 0;
 
 		if (deleted) {
-			logger.info('Deleted account', { id });
+			logger.info({ id }, 'Deleted account');
 			liveTvEvents.emitAccountDeleted(id);
 		}
 

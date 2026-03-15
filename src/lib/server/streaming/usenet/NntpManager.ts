@@ -9,8 +9,10 @@
  */
 
 import type { BackgroundService, ServiceStatus } from '$lib/server/services/background-service';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { getNntpServerService } from '../nzb/NntpServerService';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 import { NntpPool } from './NntpPool';
 import { decodeYenc, extractYencHeader } from './YencDecoder';
 import type { NntpServerConfig, YencDecodeResult, YencHeader, ProviderHealth } from './types';
@@ -107,12 +109,15 @@ export class NntpManager implements BackgroundService {
 			try {
 				await this.initialize();
 				this._status = 'ready';
-				logger.info('[NntpManager] Service ready', { providers: this.providerOrder.length });
+				logger.info({ providers: this.providerOrder.length }, '[NntpManager] Service ready');
 			} catch (error) {
 				this._status = 'error';
-				logger.error('[NntpManager] Failed to start', {
-					error: error instanceof Error ? error.message : 'Unknown error'
-				});
+				logger.error(
+					{
+						error: error instanceof Error ? error.message : 'Unknown error'
+					},
+					'[NntpManager] Failed to start'
+				);
 			}
 		});
 	}
@@ -164,11 +169,14 @@ export class NntpManager implements BackgroundService {
 			this.pools.set(server.id, pool);
 			this.providerOrder.push(server.id);
 
-			logger.debug('[NntpManager] Added provider pool', {
-				id: server.id,
-				host: server.host,
-				priority: server.priority
-			});
+			logger.debug(
+				{
+					id: server.id,
+					host: server.host,
+					priority: server.priority
+				},
+				'[NntpManager] Added provider pool'
+			);
 		}
 
 		// Set up periodic cleanup
@@ -205,17 +213,20 @@ export class NntpManager implements BackgroundService {
 		const cached = this.articleCache.get(messageId);
 		if (cached && Date.now() - cached.timestamp < this.config.articleCacheTtlMs) {
 			cached.accessCount++;
-			logger.debug('[NntpManager] Article cache hit', {
-				messageId: messageId.slice(0, 20),
-				size: cached.result.data.length
-			});
+			logger.debug(
+				{
+					messageId: messageId.slice(0, 20),
+					size: cached.result.data.length
+				},
+				'[NntpManager] Article cache hit'
+			);
 			return cached.result;
 		}
 
 		// Check for in-flight request (deduplication)
 		const inFlight = this.inFlightRequests.get(messageId);
 		if (inFlight) {
-			logger.debug('[NntpManager] Deduplicating request', { messageId: messageId.slice(0, 20) });
+			logger.debug({ messageId: messageId.slice(0, 20) }, '[NntpManager] Deduplicating request');
 			return inFlight.promise;
 		}
 
@@ -355,10 +366,13 @@ export class NntpManager implements BackgroundService {
 			} catch (error) {
 				const message = error instanceof Error ? error.message : 'Unknown error';
 				errors.push(`${pool.host}: ${message}`);
-				logger.debug(`[NntpManager] Provider failed for ${messageId.slice(0, 20)}`, {
-					provider: pool.host,
-					error: message
-				});
+				logger.debug(
+					{
+						provider: pool.host,
+						error: message
+					},
+					`[NntpManager] Provider failed for ${messageId.slice(0, 20)}`
+				);
 				continue;
 			}
 		}
@@ -405,7 +419,7 @@ export class NntpManager implements BackgroundService {
 			this.articleCache.delete(entries[i][0]);
 		}
 
-		logger.debug('[NntpManager] Evicted article cache entries', { evicted: toEvict });
+		logger.debug({ evicted: toEvict }, '[NntpManager] Evicted article cache entries');
 	}
 
 	/**
@@ -424,16 +438,19 @@ export class NntpManager implements BackgroundService {
 		}
 
 		if (cleaned > 0) {
-			logger.debug('[NntpManager] Cleaned expired article cache', { cleaned });
+			logger.debug({ cleaned }, '[NntpManager] Cleaned expired article cache');
 		}
 
 		// Clean up stale in-flight requests (shouldn't happen normally)
 		for (const [messageId, request] of this.inFlightRequests) {
 			if (now - request.timestamp > 5 * 60 * 1000) {
 				this.inFlightRequests.delete(messageId);
-				logger.warn('[NntpManager] Cleaned stale in-flight request', {
-					messageId: messageId.slice(0, 20)
-				});
+				logger.warn(
+					{
+						messageId: messageId.slice(0, 20)
+					},
+					'[NntpManager] Cleaned stale in-flight request'
+				);
 			}
 		}
 

@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { Shield, User, Lock, CheckCircle, AlertCircle } from 'lucide-svelte';
 	import { authClient } from '$lib/auth/client.js';
+	import { toasts } from '$lib/stores/toast.svelte';
 	import {
 		isHardReservedUsername,
 		USERNAME_MAX_LENGTH,
@@ -126,13 +127,16 @@
 				});
 
 				if (!apiKeyResponse.ok) {
-					console.warn('Failed to auto-generate API keys:', await apiKeyResponse.text());
-				} else {
-					console.log('API keys auto-generated successfully');
+					toasts.warning('Account created, but API keys were not auto-generated', {
+						description: await apiKeyResponse.text()
+					});
 				}
 			} catch (apiKeyError) {
 				// Don't fail setup if API key creation fails - keys can be regenerated later
-				console.warn('Error creating API keys:', apiKeyError);
+				toasts.warning('Account created, but API key creation failed', {
+					description:
+						apiKeyError instanceof Error ? apiKeyError.message : 'API keys can be created later'
+				});
 			}
 
 			// Mark setup as complete

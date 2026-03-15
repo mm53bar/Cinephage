@@ -23,7 +23,9 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { isVideoFile, mediaInfoService } from './media-info.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
 import { EventEmitter } from 'events';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 import { DOWNLOAD } from '$lib/config/constants';
 import {
 	findOverlappingRootFolder,
@@ -229,10 +231,13 @@ export class DiskScanService extends EventEmitter {
 							parentFolder: dirname(relativePath) || '.'
 						});
 					} catch (statError) {
-						logger.warn('[DiskScan] Could not stat file', {
-							fullPath,
-							error: statError instanceof Error ? statError.message : String(statError)
-						});
+						logger.warn(
+							{
+								fullPath,
+								error: statError instanceof Error ? statError.message : String(statError)
+							},
+							'[DiskScan] Could not stat file'
+						);
 					}
 				} else if (entry.isSymbolicLink()) {
 					// Include symlinked files (e.g., NZB-Mount/rclone strategies),
@@ -265,18 +270,20 @@ export class DiskScanService extends EventEmitter {
 							parentFolder: dirname(relativePath) || '.'
 						});
 					} catch (statError) {
-						logger.warn('[DiskScan] Could not stat symlinked file', {
-							fullPath,
-							error: statError instanceof Error ? statError.message : String(statError)
-						});
+						logger.warn(
+							{
+								fullPath,
+								error: statError instanceof Error ? statError.message : String(statError)
+							},
+							'[DiskScan] Could not stat symlinked file'
+						);
 					}
 				}
 			}
 		} catch (error) {
 			logger.error(
-				'[DiskScan] Error reading directory',
-				error instanceof Error ? error : undefined,
-				{ currentPath }
+				{ err: error instanceof Error ? error : undefined, ...{ currentPath } },
+				'[DiskScan] Error reading directory'
 			);
 		}
 
@@ -554,10 +561,13 @@ export class DiskScanService extends EventEmitter {
 		}
 
 		if (changedMovieIds.length > 0) {
-			logger.info('[DiskScan] Reconciled movie file state', {
-				rootFolderId,
-				changedMovies: changedMovieIds.length
-			});
+			logger.info(
+				{
+					rootFolderId,
+					changedMovies: changedMovieIds.length
+				},
+				'[DiskScan] Reconciled movie file state'
+			);
 
 			for (const movieId of changedMovieIds) {
 				libraryMediaEvents.emitMovieUpdated(movieId);
@@ -642,11 +652,14 @@ export class DiskScanService extends EventEmitter {
 		}
 
 		if (episodeIdsToSetTrue.length > 0 || episodeIdsToSetFalse.length > 0) {
-			logger.info('[DiskScan] Reconciled episode file state', {
-				rootFolderId,
-				episodesSetTrue: episodeIdsToSetTrue.length,
-				episodesSetFalse: episodeIdsToSetFalse.length
-			});
+			logger.info(
+				{
+					rootFolderId,
+					episodesSetTrue: episodeIdsToSetTrue.length,
+					episodesSetFalse: episodeIdsToSetFalse.length
+				},
+				'[DiskScan] Reconciled episode file state'
+			);
 		}
 
 		for (const seriesId of touchedSeriesIds) {
@@ -667,9 +680,8 @@ export class DiskScanService extends EventEmitter {
 				results.push(result);
 			} catch (error) {
 				logger.error(
-					'[DiskScan] Error scanning folder',
-					error instanceof Error ? error : undefined,
-					{ folderPath: folder.path }
+					{ err: error instanceof Error ? error : undefined, ...{ folderPath: folder.path } },
+					'[DiskScan] Error scanning folder'
 				);
 			}
 		}
@@ -827,9 +839,12 @@ export class DiskScanService extends EventEmitter {
 				});
 
 				if (!identifier) {
-					logger.debug('[DiskScan] Could not resolve episode mapping from filename', {
-						fileName
-					});
+					logger.debug(
+						{
+							fileName
+						},
+						'[DiskScan] Could not resolve episode mapping from filename'
+					);
 					return false; // Fall back to unmatched
 				}
 
@@ -842,7 +857,7 @@ export class DiskScanService extends EventEmitter {
 
 				if (existingFile.length > 0) {
 					// Already linked, skip
-					logger.debug('[DiskScan] File already linked', { relativePath });
+					logger.debug({ relativePath }, '[DiskScan] File already linked');
 					return true;
 				}
 
@@ -855,11 +870,14 @@ export class DiskScanService extends EventEmitter {
 				// If no episodes found in DB, we can't link this file - let it become unmatched
 				// This prevents creating orphaned episode_files with empty episodeIds
 				if (episodeIds.length === 0 || seasonNum === undefined) {
-					logger.debug('[DiskScan] No matching episodes in DB for file', {
-						fileName,
-						identifier,
-						seriesId: s.id
-					});
+					logger.debug(
+						{
+							fileName,
+							identifier,
+							seriesId: s.id
+						},
+						'[DiskScan] No matching episodes in DB for file'
+					);
 					return false; // Fall back to unmatched
 				}
 
@@ -900,11 +918,14 @@ export class DiskScanService extends EventEmitter {
 				// Update series and season stats
 				await this.updateSeriesAndSeasonStats(s.id);
 
-				logger.info('[DiskScan] Auto-linked episode file', {
-					relativePath,
-					season: seasonNum,
-					episodes: episodeNums
-				});
+				logger.info(
+					{
+						relativePath,
+						season: seasonNum,
+						episodes: episodeNums
+					},
+					'[DiskScan] Auto-linked episode file'
+				);
 				return true;
 			}
 		}

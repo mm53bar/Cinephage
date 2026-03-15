@@ -32,10 +32,13 @@ export const GET: RequestHandler = async (event) => {
 
 		return json(result);
 	} catch (error) {
-		logger.error('[RenamePreview API] Failed to preview series rename', {
-			seriesId: params.id,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				seriesId: params.id,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'[RenamePreview API] Failed to preview series rename'
+		);
 
 		return json(
 			{

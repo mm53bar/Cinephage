@@ -9,7 +9,7 @@ import {
 	downloadQueue
 } from '$lib/server/db/schema.js';
 import { eq, and, inArray, ne, isNotNull } from 'drizzle-orm';
-import type { PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from './$types';
 import type { LibrarySeries, EpisodeFile } from '$lib/types/library';
 import { logger } from '$lib/logging';
 import { DEFAULT_PROFILES } from '$lib/server/scoring/profiles.js';
@@ -359,7 +359,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			uniqueHdrFormats: [...uniqueHdrFormats].sort()
 		};
 	} catch (error) {
-		logger.error('[TV Page] Error loading series', error instanceof Error ? error : undefined);
+		logger.error({ err: error }, '[TV Page] Error loading series');
 		const emptySeries: LibrarySeries[] = [];
 		const emptyProfiles: QualityProfileSummary[] = [];
 		const emptyStrings: string[] = [];
@@ -387,7 +387,7 @@ export const load: PageServerLoad = async ({ url }) => {
 	}
 };
 
-export const actions = {
+export const actions: Actions = {
 	toggleAllMonitored: async ({ request }) => {
 		const formData = await request.formData();
 		const monitored = formData.get('monitored') === 'true';
@@ -396,10 +396,7 @@ export const actions = {
 			await db.update(series).set({ monitored });
 			return { success: true };
 		} catch (error) {
-			logger.error(
-				'[TV] Failed to toggle all monitored',
-				error instanceof Error ? error : undefined
-			);
+			logger.error({ err: error }, '[TV] Failed to toggle all monitored');
 			return { success: false, error: 'Failed to update series' };
 		}
 	}

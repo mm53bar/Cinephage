@@ -108,11 +108,14 @@ export const load: PageServerLoad = async ({ params }): Promise<LibraryMoviePage
 			.from(subtitles)
 			.where(eq(subtitles.movieId, id)),
 		tmdb.getMovieReleaseInfo(movie.tmdbId).catch((err) => {
-			logger.warn('[LibraryMovie] Failed to fetch TMDB release info', {
-				movieId: id,
-				tmdbId: movie.tmdbId,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					movieId: id,
+					tmdbId: movie.tmdbId,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'[LibraryMovie] Failed to fetch TMDB release info'
+			);
 			return null;
 		})
 	]);

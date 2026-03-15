@@ -188,19 +188,18 @@ printf '%s' 'NewPass123!' | docker exec -i cinephage cine-run auth:reset-admin-p
 
 ---
 
-## Migration from Legacy /app/data and /app/logs Mounts
+## Migration from Legacy /app/data Mounts
 
-If you're upgrading from an older version that used `/app/data` and `/app/logs` mounts:
+If you're upgrading from an older version that used `/app/data` mounts:
 
 ### Automatic Migration (Recommended)
 
-1. Update your `docker-compose.yaml` to add the `/config` mount **while keeping** the old mounts:
+1. Update your `docker-compose.yaml` to add the `/config` mount **while keeping** the old data mount:
 
    ```yaml
    volumes:
      - ./config:/config # NEW: Add this line
      - ./data:/app/data # KEEP temporarily
-     - ./logs:/app/logs # KEEP temporarily
      - /path/to/media:/media # REQUIRED: Your media library
      - /path/to/downloads:/downloads # REQUIRED: Download client output folder
    ```
@@ -217,14 +216,14 @@ If you're upgrading from an older version that used `/app/data` and `/app/logs` 
    docker compose logs cinephage | grep -i migrat
    ```
 
-   You should see: "Migrating data from /app/data to /config/data..." and "Migrating logs from /app/logs to /config/logs..."
+   You should see: "Migrating data from /app/data to /config/data..."
 
-4. Once migration is complete, remove the old mounts from `docker-compose.yaml`:
+4. Once migration is complete, remove the old data mount from `docker-compose.yaml`:
 
    ```yaml
    volumes:
      - ./config:/config # Keep this
-     # Remove the /app/data and /app/logs lines
+     # Remove the /app/data line
      - /path/to/media:/media # REQUIRED: Your media library
      - /path/to/downloads:/downloads # REQUIRED: Download client output folder
    ```
@@ -267,7 +266,7 @@ If you see: "ERROR: Failed to migrate data to /config/data"
    user: '0:0' # Run as root
    ```
 
-5. Remove old mounts and restart.
+5. Remove the old data mount and restart.
 
 ### Manual Migration (Fallback)
 
@@ -282,9 +281,8 @@ If automatic migration doesn't work:
 2. Manually copy data:
 
    ```bash
-   mkdir -p ./config/data ./config/logs
+   mkdir -p ./config/data
    cp -a ./data/. ./config/data/
-   cp -a ./logs/. ./config/logs/
    ```
 
 3. Fix ownership:
@@ -308,9 +306,6 @@ After migration, verify your data is accessible:
 ```bash
 # Check database exists
 ls -lh ./config/data/cinephage.db
-
-# Check logs
-ls -lh ./config/logs/
 
 # Check indexer definitions
 ls -lh ./config/data/indexers/definitions/
@@ -628,29 +623,21 @@ Restart Cinephage to apply changes.
 
 ### Location
 
-- Default: `logs/` in project directory
 - Docker: `docker logs cinephage`
 - Systemd: `journalctl -u cinephage`
 
 ### Useful Commands
 
 ```bash
-# View recent logs
-tail -100 logs/cinephage.log
+# View recent Docker logs
+docker logs cinephage --tail 100 2>&1
 
-# Follow logs real-time
-tail -f logs/cinephage.log
+# Follow Docker logs in real time
+docker logs cinephage --follow 2>&1
 
-# Search for errors
-grep -i error logs/cinephage.log
+# Search journalctl output for errors
+sudo journalctl -u cinephage -p err
 ```
-
-### Log Rotation
-
-Configured via environment variables:
-
-- `LOG_MAX_SIZE_MB`: Max file size (default: 10MB)
-- `LOG_MAX_FILES`: Files to keep (default: 5)
 
 ---
 

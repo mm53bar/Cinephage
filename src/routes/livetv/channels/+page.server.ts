@@ -3,6 +3,7 @@ import { getManagedApiKeysForRequest } from '$lib/server/auth/index.js';
 import { channelLineupService } from '$lib/server/livetv/lineup';
 import { channelCategoryService } from '$lib/server/livetv/categories';
 import { getEpgService } from '$lib/server/livetv/epg';
+import { logger } from '$lib/logging';
 import { error } from '@sveltejs/kit';
 
 interface NowNextEntry {
@@ -66,7 +67,10 @@ export const load: ServerLoad = async ({ request, locals }) => {
 			...liveTvData
 		};
 	} catch (err) {
-		console.error('Error loading streaming API key:', err);
+		logger.error(
+			{ err, component: 'LiveTvChannelsPage', logDomain: 'livetv' },
+			'Error loading streaming API key'
+		);
 		return {
 			streamingApiKey: null,
 			lineup: [],

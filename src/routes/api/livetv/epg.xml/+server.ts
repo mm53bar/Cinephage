@@ -189,11 +189,14 @@ export const GET: RequestHandler = async ({ url }) => {
 
 		const xml = xmlLines.join('\n');
 
-		logger.debug('[EPG XML] Generated XMLTV', {
-			channels: lineup.length,
-			programs: programCount,
-			hours
-		});
+		logger.debug(
+			{
+				channels: lineup.length,
+				programs: programCount,
+				hours
+			},
+			'[EPG XML] Generated XMLTV'
+		);
 
 		return new Response(xml, {
 			status: 200,

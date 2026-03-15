@@ -1,6 +1,8 @@
 import { basename } from 'node:path';
 import { eq } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 import { db } from '$lib/server/db/index.js';
 import { episodeFiles, movieFiles, movies, series } from '$lib/server/db/schema.js';
 import { ReleaseParser } from '$lib/server/indexers/parser/ReleaseParser.js';
@@ -354,19 +356,22 @@ export async function backfillReleaseMetadata(
 		}
 	}
 
-	logger.info('[ReleaseMetadataBackfill] Completed', {
-		apply,
-		movieFilesScanned: result.movieFilesScanned,
-		episodeFilesScanned: result.episodeFilesScanned,
-		movieFilesUpdated: result.movieFilesUpdated,
-		episodeFilesUpdated: result.episodeFilesUpdated,
-		editionsBackfilled: result.editionsBackfilled,
-		releaseGroupsBackfilled: result.releaseGroupsBackfilled,
-		suspiciousSceneNames: result.suspiciousSceneNames,
-		highRiskCount: result.highRiskCount,
-		lowRiskCount: result.lowRiskCount,
-		errors: result.errors.length
-	});
+	logger.info(
+		{
+			apply,
+			movieFilesScanned: result.movieFilesScanned,
+			episodeFilesScanned: result.episodeFilesScanned,
+			movieFilesUpdated: result.movieFilesUpdated,
+			episodeFilesUpdated: result.episodeFilesUpdated,
+			editionsBackfilled: result.editionsBackfilled,
+			releaseGroupsBackfilled: result.releaseGroupsBackfilled,
+			suspiciousSceneNames: result.suspiciousSceneNames,
+			highRiskCount: result.highRiskCount,
+			lowRiskCount: result.lowRiskCount,
+			errors: result.errors.length
+		},
+		'[ReleaseMetadataBackfill] Completed'
+	);
 
 	return result;
 }

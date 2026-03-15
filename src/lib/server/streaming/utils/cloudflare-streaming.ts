@@ -14,7 +14,7 @@ import { fetchWithTimeout } from './http';
 import type { FetchOptions } from './http';
 import { DEFAULT_USER_AGENT } from '../constants';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 // ============================================================================
 // Session Cache
@@ -57,11 +57,14 @@ function cacheSession(domain: string, cookies: string, userAgent: string): void 
 		timestamp: Date.now()
 	});
 
-	logger.debug('[CloudflareStreaming] Cached session for domain', {
-		domain,
-		cookieLength: cookies.length,
-		...streamLog
-	});
+	logger.debug(
+		{
+			domain,
+			cookieLength: cookies.length,
+			...streamLog
+		},
+		'[CloudflareStreaming] Cached session for domain'
+	);
 }
 
 // ============================================================================
@@ -128,7 +131,7 @@ export async function fetchWithCloudflareBypass(
 	// Check if we have a cached session for this domain
 	const cachedSession = getCachedSession(domain);
 	if (cachedSession) {
-		logger.debug('[CloudflareStreaming] Using cached session', { domain, ...streamLog });
+		logger.debug({ domain, ...streamLog }, '[CloudflareStreaming] Using cached session');
 
 		// Try with cached cookies first
 		const response = await fetchWithTimeout(url, {
@@ -141,21 +144,24 @@ export async function fetchWithCloudflareBypass(
 		});
 
 		if (response.ok) {
-			logger.debug('[CloudflareStreaming] Cached session worked', { domain, ...streamLog });
+			logger.debug({ domain, ...streamLog }, '[CloudflareStreaming] Cached session worked');
 			return response;
 		}
 
 		// Cached session expired, clear it
-		logger.debug('[CloudflareStreaming] Cached session expired, clearing', {
-			domain,
-			status: response.status,
-			...streamLog
-		});
+		logger.debug(
+			{
+				domain,
+				status: response.status,
+				...streamLog
+			},
+			'[CloudflareStreaming] Cached session expired, clearing'
+		);
 		sessionCache.delete(domain);
 	}
 
 	// Try normal fetch first
-	logger.debug('[CloudflareStreaming] Attempting normal fetch', { domain, ...streamLog });
+	logger.debug({ domain, ...streamLog }, '[CloudflareStreaming] Attempting normal fetch');
 	const response = await fetchWithTimeout(url, options);
 
 	// If successful or not Cloudflare, return as-is
@@ -178,10 +184,13 @@ export async function fetchWithCloudflareBypass(
 	// Cloudflare detected - check if solver is enabled
 	const config = captchaSolverSettingsService.getConfig();
 	if (!config.enabled) {
-		logger.warn('[CloudflareStreaming] Cloudflare detected but solver disabled', {
-			domain,
-			...streamLog
-		});
+		logger.warn(
+			{
+				domain,
+				...streamLog
+			},
+			'[CloudflareStreaming] Cloudflare detected but solver disabled'
+		);
 		return new Response(body, {
 			status: response.status,
 			statusText: response.statusText,
@@ -190,20 +199,26 @@ export async function fetchWithCloudflareBypass(
 	}
 
 	// Use browser fetch to bypass Cloudflare
-	logger.info('[CloudflareStreaming] Cloudflare detected, using browser fetch', {
-		domain,
-		...streamLog
-	});
+	logger.info(
+		{
+			domain,
+			...streamLog
+		},
+		'[CloudflareStreaming] Cloudflare detected, using browser fetch'
+	);
 
 	try {
 		// For streaming URLs with referer, we need to visit the referer first
 		// to get Cloudflare clearance, then access the stream URL
 		if (referer) {
-			logger.debug('[CloudflareStreaming] Two-step fetch: referer first, then stream URL', {
-				referer,
-				domain,
-				...streamLog
-			});
+			logger.debug(
+				{
+					referer,
+					domain,
+					...streamLog
+				},
+				'[CloudflareStreaming] Two-step fetch: referer first, then stream URL'
+			);
 
 			// Step 1: Visit referer site to get clearance
 			const refererResult = await browserFetch(
@@ -218,18 +233,24 @@ export async function fetchWithCloudflareBypass(
 			);
 
 			if (!refererResult.success || !refererResult.cookies || refererResult.cookies.length === 0) {
-				logger.warn('[CloudflareStreaming] Failed to get cookies from referer', {
-					referer,
-					success: refererResult.success,
-					cookieCount: refererResult.cookies?.length || 0,
-					...streamLog
-				});
+				logger.warn(
+					{
+						referer,
+						success: refererResult.success,
+						cookieCount: refererResult.cookies?.length || 0,
+						...streamLog
+					},
+					'[CloudflareStreaming] Failed to get cookies from referer'
+				);
 			} else {
-				logger.info('[CloudflareStreaming] Got cookies from referer', {
-					referer,
-					cookieCount: refererResult.cookies.length,
-					...streamLog
-				});
+				logger.info(
+					{
+						referer,
+						cookieCount: refererResult.cookies.length,
+						...streamLog
+					},
+					'[CloudflareStreaming] Got cookies from referer'
+				);
 
 				// Cache the session immediately
 				if (refererResult.userAgent) {
@@ -238,10 +259,13 @@ export async function fetchWithCloudflareBypass(
 				}
 
 				// Step 2: Try fetching the stream URL with the cookies
-				logger.debug('[CloudflareStreaming] Fetching stream URL with referer cookies', {
-					domain,
-					...streamLog
-				});
+				logger.debug(
+					{
+						domain,
+						...streamLog
+					},
+					'[CloudflareStreaming] Fetching stream URL with referer cookies'
+				);
 
 				const cookieHeader = refererResult.cookies.map((c) => `${c.name}=${c.value}`).join('; ');
 				const streamResponse = await fetchWithTimeout(url, {
@@ -260,11 +284,11 @@ export async function fetchWithCloudflareBypass(
 					const streamBody = await streamResponse.text();
 					if (streamBody.includes('#EXTM3U')) {
 						logger.info(
-							'[CloudflareStreaming] Stream URL fetched successfully with referer cookies',
 							{
 								domain,
 								...streamLog
-							}
+							},
+							'[CloudflareStreaming] Stream URL fetched successfully with referer cookies'
 						);
 						return new Response(streamBody, {
 							status: 200,
@@ -277,11 +301,11 @@ export async function fetchWithCloudflareBypass(
 				}
 
 				logger.debug(
-					'[CloudflareStreaming] Stream URL still blocked, trying direct browser fetch',
 					{
 						domain,
 						...streamLog
-					}
+					},
+					'[CloudflareStreaming] Stream URL still blocked, trying direct browser fetch'
 				);
 			}
 		}
@@ -299,11 +323,14 @@ export async function fetchWithCloudflareBypass(
 		);
 
 		if (!browserResult.success) {
-			logger.error('[CloudflareStreaming] Browser fetch failed', {
-				domain,
-				error: browserResult.error,
-				...streamLog
-			});
+			logger.error(
+				{
+					domain,
+					error: browserResult.error,
+					...streamLog
+				},
+				'[CloudflareStreaming] Browser fetch failed'
+			);
 			return new Response(body, {
 				status: response.status,
 				statusText: response.statusText,
@@ -317,12 +344,15 @@ export async function fetchWithCloudflareBypass(
 			cacheSession(domain, cookieString, browserResult.userAgent);
 		}
 
-		logger.info('[CloudflareStreaming] Browser fetch succeeded', {
-			domain,
-			bodyLength: browserResult.body.length,
-			timeMs: browserResult.timeMs,
-			...streamLog
-		});
+		logger.info(
+			{
+				domain,
+				bodyLength: browserResult.body.length,
+				timeMs: browserResult.timeMs,
+				...streamLog
+			},
+			'[CloudflareStreaming] Browser fetch succeeded'
+		);
 
 		// Return response with browser content
 		return new Response(browserResult.body, {
@@ -333,11 +363,14 @@ export async function fetchWithCloudflareBypass(
 			}
 		});
 	} catch (error) {
-		logger.error('[CloudflareStreaming] Browser fetch error', {
-			domain,
-			error: error instanceof Error ? error.message : String(error),
-			...streamLog
-		});
+		logger.error(
+			{
+				domain,
+				error: error instanceof Error ? error.message : String(error),
+				...streamLog
+			},
+			'[CloudflareStreaming] Browser fetch error'
+		);
 		return new Response(body, {
 			status: response.status,
 			statusText: response.statusText,

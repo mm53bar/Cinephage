@@ -13,7 +13,9 @@ import type { SearchCriteria } from '../types';
 import { getCategoriesForSearchType, isMovieSearch } from '../types';
 import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { encodeUrlParam } from '../http/EncodingUtils';
 
 /**
@@ -632,10 +634,13 @@ export class RequestBuilder {
 		mode: string
 	): Record<string, string> {
 		const supported = this.supportedParams.get(mode);
-		logger.debug('[RequestBuilder] filterBySupportedParams', {
-			mode,
-			supportedParams: supported ?? []
-		});
+		logger.debug(
+			{
+				mode,
+				supportedParams: supported ?? []
+			},
+			'[RequestBuilder] filterBySupportedParams'
+		);
 		if (!supported || supported.length === 0) {
 			// No filtering configured for this mode
 			return inputs;

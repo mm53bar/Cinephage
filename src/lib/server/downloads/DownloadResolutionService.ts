@@ -79,13 +79,16 @@ class DownloadResolutionService {
 	async resolve(input: ResolveDownloadInput): Promise<ResolvedDownload> {
 		const { downloadUrl, magnetUrl, infoHash, indexerId, title, commentsUrl } = input;
 
-		logger.debug('Resolving download', {
-			title,
-			hasMagnetUrl: !!magnetUrl,
-			hasDownloadUrl: !!downloadUrl,
-			hasInfoHash: !!infoHash,
-			indexerId
-		});
+		logger.debug(
+			{
+				title,
+				hasMagnetUrl: !!magnetUrl,
+				hasDownloadUrl: !!downloadUrl,
+				hasInfoHash: !!infoHash,
+				indexerId
+			},
+			'Resolving download'
+		);
 
 		// Strategy 1: Fetch torrent file through indexer (preferred)
 		// This is the primary method - it gets the actual .torrent file which
@@ -98,7 +101,7 @@ class DownloadResolutionService {
 		// Only used when we don't have an indexer (e.g., public torrents)
 		if (magnetUrl) {
 			const extractedHash = (await extractInfoHashFromMagnet(magnetUrl)) || infoHash || undefined;
-			logger.debug('Using provided magnet URL', { infoHash: extractedHash });
+			logger.debug({ infoHash: extractedHash }, 'Using provided magnet URL');
 			return {
 				success: true,
 				magnetUrl,
@@ -110,7 +113,7 @@ class DownloadResolutionService {
 		// Fallback for cases where we only have an info hash (rare)
 		if (infoHash) {
 			const builtMagnet = buildMagnetFromInfoHash(infoHash, title);
-			logger.debug('Built magnet from infoHash', { infoHash });
+			logger.debug({ infoHash }, 'Built magnet from infoHash');
 			return {
 				success: true,
 				magnetUrl: builtMagnet,
@@ -120,10 +123,13 @@ class DownloadResolutionService {
 
 		// Strategy 4: Fallback - return the URL as-is and let download client handle it
 		if (downloadUrl) {
-			logger.warn('No indexer available, using downloadUrl as fallback', {
-				title,
-				downloadUrl: redactUrl(downloadUrl)
-			});
+			logger.warn(
+				{
+					title,
+					downloadUrl: redactUrl(downloadUrl)
+				},
+				'No indexer available, using downloadUrl as fallback'
+			);
 
 			// Check if downloadUrl is already a magnet
 			if (downloadUrl.startsWith('magnet:')) {
@@ -159,25 +165,31 @@ class DownloadResolutionService {
 		title: string,
 		commentsUrl?: string
 	): Promise<ResolvedDownload> {
-		logger.debug('Fetching torrent through indexer', {
-			indexerId,
-			url: redactUrl(downloadUrl)
-		});
+		logger.debug(
+			{
+				indexerId,
+				url: redactUrl(downloadUrl)
+			},
+			'Fetching torrent through indexer'
+		);
 
 		try {
 			const indexerManager = await getIndexerManager();
 			const indexer = await indexerManager.getIndexerInstance(indexerId);
 
 			if (!indexer) {
-				logger.warn('Indexer not found, falling back to direct download', { indexerId });
+				logger.warn({ indexerId }, 'Indexer not found, falling back to direct download');
 				return this.fetchDirectly(downloadUrl, title);
 			}
 
 			// Check if indexer supports downloadTorrent method
 			if (!indexer.downloadTorrent) {
-				logger.warn('Indexer does not support downloadTorrent, falling back to direct download', {
-					indexerId
-				});
+				logger.warn(
+					{
+						indexerId
+					},
+					'Indexer does not support downloadTorrent, falling back to direct download'
+				);
 				return this.fetchDirectly(downloadUrl, title);
 			}
 
@@ -187,16 +199,19 @@ class DownloadResolutionService {
 			});
 
 			if (!result.success) {
-				logger.warn('Indexer download failed, trying direct fetch', {
-					indexerId,
-					error: result.error
-				});
+				logger.warn(
+					{
+						indexerId,
+						error: result.error
+					},
+					'Indexer download failed, trying direct fetch'
+				);
 				return this.fetchDirectly(downloadUrl, title);
 			}
 
 			// If we got a magnet URL back (redirect)
 			if (result.magnetUrl) {
-				logger.debug('Indexer returned magnet URL', { infoHash: result.infoHash });
+				logger.debug({ infoHash: result.infoHash }, 'Indexer returned magnet URL');
 				return {
 					success: true,
 					magnetUrl: result.magnetUrl,
@@ -208,10 +223,13 @@ class DownloadResolutionService {
 			// NEVER build a magnet link from the torrent file, as this would lose
 			// private tracker announce URLs and break private trackers like nCore.
 			if (result.data) {
-				logger.debug('Returning torrent file', {
-					infoHash: result.infoHash,
-					dataSize: result.data.length
-				});
+				logger.debug(
+					{
+						infoHash: result.infoHash,
+						dataSize: result.data.length
+					},
+					'Returning torrent file'
+				);
 				return {
 					success: true,
 					torrentFile: result.data,
@@ -224,8 +242,7 @@ class DownloadResolutionService {
 				error: 'Indexer returned empty result'
 			};
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			logger.error('Failed to fetch through indexer', { error: message, indexerId });
+			logger.error({ err: error, indexerId }, 'Failed to fetch through indexer');
 
 			// Try direct fetch as fallback
 			return this.fetchDirectly(downloadUrl, title);
@@ -237,7 +254,7 @@ class DownloadResolutionService {
 	 * Used as a fallback when indexer is unavailable.
 	 */
 	private async fetchDirectly(downloadUrl: string, _title: string): Promise<ResolvedDownload> {
-		logger.debug('Fetching torrent directly', { url: redactUrl(downloadUrl) });
+		logger.debug({ url: redactUrl(downloadUrl) }, 'Fetching torrent directly');
 
 		// Check if it's already a magnet
 		if (downloadUrl.startsWith('magnet:')) {
@@ -324,7 +341,7 @@ class DownloadResolutionService {
 			return { success: false, error: 'Too many redirects', usedFallback: true };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			logger.error('Direct fetch failed', { error: message });
+			logger.error({ err: error }, 'Direct fetch failed');
 			return { success: false, error: message, usedFallback: true };
 		}
 	}

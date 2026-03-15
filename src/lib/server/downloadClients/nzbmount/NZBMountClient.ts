@@ -3,7 +3,9 @@
  * Uses the SABnzbd API for queue operations, with a tailored test routine.
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'imports' as const });
 import type {
 	IDownloadClient,
 	DownloadClientConfig,
@@ -58,12 +60,15 @@ export class NZBMountClient implements IDownloadClient {
 
 	async test(): Promise<ConnectionTestResult> {
 		try {
-			logger.debug('[NZB-Mount] Testing connection', {
-				host: this.config.host,
-				port: this.config.port,
-				urlBase: this.config.urlBase ?? '',
-				mountMode: this.mountMode
-			});
+			logger.debug(
+				{
+					host: this.config.host,
+					port: this.config.port,
+					urlBase: this.config.urlBase ?? '',
+					mountMode: this.mountMode
+				},
+				'[NZB-Mount] Testing connection'
+			);
 
 			const version = await this.proxy.getVersion();
 			const sabConfig = await this.proxy.getConfig();
@@ -78,9 +83,12 @@ export class NZBMountClient implements IDownloadClient {
 				if (!statusMessage.toLowerCase().includes('unknown mode')) {
 					throw statusError;
 				}
-				logger.warn('[NZB-Mount] fullstatus not supported, skipping disk info', {
-					error: statusMessage
-				});
+				logger.warn(
+					{
+						error: statusMessage
+					},
+					'[NZB-Mount] fullstatus not supported, skipping disk info'
+				);
 			}
 
 			let warnings: SabnzbdWarning[] = [];
@@ -89,7 +97,7 @@ export class NZBMountClient implements IDownloadClient {
 			} catch (warningError) {
 				const warningMessage =
 					warningError instanceof SabnzbdApiError ? warningError.message : String(warningError);
-				logger.warn('[NZB-Mount] warnings not supported, skipping', { error: warningMessage });
+				logger.warn({ warningMessage }, '[NZB-Mount] warnings not supported, skipping');
 			}
 
 			return {
@@ -111,7 +119,7 @@ export class NZBMountClient implements IDownloadClient {
 					? error.message
 					: `Failed to connect: ${error instanceof Error ? error.message : 'Unknown error'}`;
 
-			logger.error('[NZB-Mount] Connection test failed', { error: message });
+			logger.error({ err: error }, '[NZB-Mount] Connection test failed');
 
 			return {
 				success: false,

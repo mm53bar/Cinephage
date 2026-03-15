@@ -42,6 +42,14 @@
 	const movie = $derived(movieState ?? data.movie);
 	const queueItem = $derived(queueItemState === undefined ? data.queueItem : queueItemState);
 
+	function describeError(error: unknown, fallback: string): string {
+		return error instanceof Error ? error.message : fallback;
+	}
+
+	function showActionError(message: string, error: unknown): void {
+		toasts.error(message, { description: describeError(error, message) });
+	}
+
 	$effect(() => {
 		const incomingMovieId = data.movie.id;
 		if (lastMovieId !== incomingMovieId) {
@@ -223,7 +231,7 @@
 				subtitles: refreshed.subtitles ?? []
 			};
 		} catch (error) {
-			console.error('Failed to refresh movie state:', error);
+			showActionError('Failed to refresh movie details', error);
 		}
 	}
 
@@ -241,7 +249,7 @@
 				movie.monitored = newValue;
 			}
 		} catch (error) {
-			console.error('Failed to update monitored status:', error);
+			showActionError('Failed to update monitored status', error);
 		} finally {
 			isSaving = false;
 		}
@@ -385,7 +393,7 @@
 				isEditModalOpen = false;
 			}
 		} catch (error) {
-			console.error('Failed to update movie:', error);
+			showActionError('Failed to update movie', error);
 		} finally {
 			isSaving = false;
 		}
@@ -419,8 +427,7 @@
 				toasts.error('Failed to delete movie', { description: result.error });
 			}
 		} catch (error) {
-			console.error('Failed to delete movie:', error);
-			toasts.error('Failed to delete movie');
+			showActionError('Failed to delete movie', error);
 		} finally {
 			isDeleting = false;
 			isDeleteModalOpen = false;
@@ -463,8 +470,7 @@
 				toasts.error('Failed to delete file', { description: result.error });
 			}
 		} catch (error) {
-			console.error('Failed to delete file:', error);
-			toasts.error('Failed to delete file');
+			showActionError('Failed to delete file', error);
 		} finally {
 			isDeletingFile = false;
 		}
@@ -499,7 +505,7 @@
 				}
 			}
 		} catch (error) {
-			console.error('Failed to auto-search subtitles:', error);
+			showActionError('Failed to auto-search subtitles', error);
 		} finally {
 			subtitleAutoSearching = false;
 		}
@@ -535,7 +541,7 @@
 				}
 			}
 		} catch (error) {
-			console.error('Failed to fetch score:', error);
+			showActionError('Failed to load score details', error);
 		} finally {
 			scoreLoading = false;
 			scoreFetched = true;

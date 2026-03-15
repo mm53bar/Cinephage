@@ -43,13 +43,17 @@ vi.mock('$lib/server/downloads/MultiSeasonSearchStrategy.js', () => ({
 	getMultiSeasonSearchStrategy: mocks.getMultiSeasonSearchStrategy
 }));
 
+const mockLogger = vi.hoisted(() => ({
+	info: vi.fn(),
+	debug: vi.fn(),
+	warn: vi.fn(),
+	error: vi.fn(),
+	child: vi.fn().mockReturnThis()
+}));
+
 vi.mock('$lib/logging/index.js', () => ({
-	logger: {
-		info: vi.fn(),
-		debug: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn()
-	}
+	logger: mockLogger,
+	createChildLogger: vi.fn(() => mockLogger)
 }));
 
 import { searchOnAdd } from './searchOnAdd';

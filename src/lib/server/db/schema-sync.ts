@@ -12,7 +12,9 @@
 
 import Database from 'better-sqlite3';
 import { createHash } from 'crypto';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'system' as const });
 import { ensureSoleUserIsAdmin } from '$lib/server/auth/admin-bootstrap.js';
 
 /**
@@ -1873,10 +1875,13 @@ const MIGRATIONS: MigrationDefinition[] = [
 				return;
 			}
 
-			logger.info('[SchemaSync] Found series needing episode metadata repair', {
-				count: brokenSeries.length,
-				series: brokenSeries.map((s) => s.title)
-			});
+			logger.info(
+				{
+					count: brokenSeries.length,
+					series: brokenSeries.map((s) => s.title)
+				},
+				'[SchemaSync] Found series needing episode metadata repair'
+			);
 
 			// Flag each series for repair by the DataRepairService on startup
 			// We use settings table since TMDB API calls need to be async
@@ -1889,9 +1894,12 @@ const MIGRATIONS: MigrationDefinition[] = [
 					);
 			}
 
-			logger.info('[SchemaSync] Queued series for metadata repair on next startup', {
-				count: brokenSeries.length
-			});
+			logger.info(
+				{
+					count: brokenSeries.length
+				},
+				'[SchemaSync] Queued series for metadata repair on next startup'
+			);
 		}
 	},
 
@@ -3669,13 +3677,16 @@ const MIGRATIONS: MigrationDefinition[] = [
 				)
 				.run();
 
-			logger.info('[SchemaSync] Deduped episode_files and enforced unique path index', {
-				groupsDeduped: duplicateGroups.length,
-				duplicateRowsDeleted,
-				canonicalRowsUpdated,
-				downloadHistoryRowsUpdated,
-				activityDetailsRowsUpdated
-			});
+			logger.info(
+				{
+					groupsDeduped: duplicateGroups.length,
+					duplicateRowsDeleted,
+					canonicalRowsUpdated,
+					downloadHistoryRowsUpdated,
+					activityDetailsRowsUpdated
+				},
+				'[SchemaSync] Deduped episode_files and enforced unique path index'
+			);
 		}
 	},
 
@@ -3697,9 +3708,12 @@ const MIGRATIONS: MigrationDefinition[] = [
 				)
 				.run();
 
-			logger.info('[SchemaSync] Backfilled orphaned download_history rows to removed', {
-				rowsUpdated: result.changes
-			});
+			logger.info(
+				{
+					rowsUpdated: result.changes
+				},
+				'[SchemaSync] Backfilled orphaned download_history rows to removed'
+			);
 		}
 	},
 
@@ -4321,16 +4335,16 @@ const MIGRATIONS: MigrationDefinition[] = [
 					}
 
 					logger.info(
-						'[SchemaSync] Migration completed: Live TV API Keys renamed to Media Streaming API Keys',
 						{
 							updatedCount: updateNameResult.changes
-						}
+						},
+						'[SchemaSync] Migration completed: Live TV API Keys renamed to Media Streaming API Keys'
 					);
 				} else {
 					logger.info('[SchemaSync] apiKey table not found, skipping migration');
 				}
 			} catch (error) {
-				logger.error('[SchemaSync] Migration failed', error);
+				logger.error({ err: error }, '[SchemaSync] Migration failed');
 				throw error;
 			}
 		}
@@ -4704,9 +4718,12 @@ const MIGRATIONS: MigrationDefinition[] = [
 				)
 				.run();
 			if (backfilled.changes > 0) {
-				logger.info('[SchemaSync] Backfilled missing rateLimit.id values', {
-					rows: backfilled.changes
-				});
+				logger.info(
+					{
+						rows: backfilled.changes
+					},
+					'[SchemaSync] Backfilled missing rateLimit.id values'
+				);
 			}
 
 			sqlite
@@ -4829,12 +4846,15 @@ function renameColumnIfExists(
 			.run();
 		logger.info(`[SchemaSync] Renamed ${tableName}.${fromColumn} to ${toColumn}`);
 	} catch (error) {
-		logger.warn('[SchemaSync] Failed to rename legacy column', {
-			table: tableName,
-			from: fromColumn,
-			to: toColumn,
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.warn(
+			{
+				table: tableName,
+				from: fromColumn,
+				to: toColumn,
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'[SchemaSync] Failed to rename legacy column'
+		);
 	}
 }
 
@@ -4879,11 +4899,14 @@ function createBetterAuthIndexes(sqlite: Database.Database): void {
 			(columnName) => !columnExists(sqlite, indexDef.table, columnName)
 		);
 		if (missingColumns.length > 0) {
-			logger.warn('[SchemaSync] Skipping Better Auth index, missing columns', {
-				index: indexDef.name,
-				table: indexDef.table,
-				missingColumns
-			});
+			logger.warn(
+				{
+					index: indexDef.name,
+					table: indexDef.table,
+					missingColumns
+				},
+				'[SchemaSync] Skipping Better Auth index, missing columns'
+			);
 			continue;
 		}
 
@@ -5088,7 +5111,7 @@ function backfillMigrationRecords(sqlite: Database.Database): void {
 		.get() as { count: number };
 	if (existingRecords.count > 0) return;
 
-	logger.info('[SchemaSync] Backfilling migration records for legacy database', { legacyVersion });
+	logger.info({ legacyVersion }, '[SchemaSync] Backfilling migration records for legacy database');
 
 	const now = new Date().toISOString();
 	const stmt = sqlite.prepare(`
@@ -5198,7 +5221,7 @@ function verifySchemaIntegrity(sqlite: Database.Database): void {
 	}
 
 	if (issues.length > 0) {
-		logger.error('[SchemaSync] Schema integrity check failed', { issues });
+		logger.error({ issues }, '[SchemaSync] Schema integrity check failed');
 		throw new Error(`Schema integrity check failed: ${issues.join(', ')}`);
 	}
 }
@@ -5237,9 +5260,12 @@ function applyMigration(sqlite: Database.Database, migration: MigrationDefinitio
 
 		logger.info(`[SchemaSync] Migration v${migration.version} completed in ${executionTime}ms`);
 	} catch (error) {
-		logger.error(`[SchemaSync] Migration v${migration.version} failed`, {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			`[SchemaSync] Migration v${migration.version} failed`
+		);
 		throw error;
 	}
 }
@@ -5290,10 +5316,13 @@ export function syncSchema(sqlite: Database.Database): void {
 		try {
 			sqlite.prepare(tableDef).run();
 		} catch (error) {
-			logger.error('[SchemaSync] Failed to create table', {
-				error: error instanceof Error ? error.message : String(error),
-				sql: tableDef.substring(0, 100) + '...'
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					sql: tableDef.substring(0, 100) + '...'
+				},
+				'[SchemaSync] Failed to create table'
+			);
 			throw error;
 		}
 	}
@@ -5304,9 +5333,12 @@ export function syncSchema(sqlite: Database.Database): void {
 		try {
 			sqlite.prepare(indexDef).run();
 		} catch (error) {
-			logger.warn('[SchemaSync] Index creation warning', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[SchemaSync] Index creation warning'
+			);
 		}
 	}
 
@@ -5320,10 +5352,13 @@ export function syncSchema(sqlite: Database.Database): void {
 
 	// 7. Apply pending migrations
 	if (pending.length > 0) {
-		logger.info('[SchemaSync] Applying migrations', {
-			count: pending.length,
-			versions: pending.map((m) => m.version)
-		});
+		logger.info(
+			{
+				count: pending.length,
+				versions: pending.map((m) => m.version)
+			},
+			'[SchemaSync] Applying migrations'
+		);
 
 		for (const migration of pending) {
 			applyMigration(sqlite, migration);
@@ -5339,7 +5374,10 @@ export function syncSchema(sqlite: Database.Database): void {
 	// 10. Update legacy schema_version for backward compatibility
 	setSchemaVersion(sqlite, CURRENT_SCHEMA_VERSION);
 
-	logger.info('[SchemaSync] Schema synchronization complete', {
-		version: CURRENT_SCHEMA_VERSION
-	});
+	logger.info(
+		{
+			version: CURRENT_SCHEMA_VERSION
+		},
+		'[SchemaSync] Schema synchronization complete'
+	);
 }

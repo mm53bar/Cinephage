@@ -162,9 +162,12 @@ export class StrmService {
 
 			return key;
 		} catch (error) {
-			logger.error('[StrmService] Failed to fetch Media Streaming API Key', {
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'[StrmService] Failed to fetch Media Streaming API Key'
+			);
 			return null;
 		}
 	}
@@ -281,22 +284,25 @@ export class StrmService {
 			const dir = dirname(destinationPath);
 			if (!existsSync(dir)) {
 				mkdirSync(dir, { recursive: true });
-				logger.debug('[StrmService] Created directory', { dir });
+				logger.debug({ dir }, '[StrmService] Created directory');
 			}
 
 			// Generate and write .strm content
 			const content = await this.generateStrmContent(options);
 			writeFileSync(destinationPath, content, 'utf8');
 
-			logger.info('[StrmService] Created .strm file', {
-				path: destinationPath,
-				content
-			});
+			logger.info(
+				{
+					path: destinationPath,
+					content
+				},
+				'[StrmService] Created .strm file'
+			);
 
 			return { success: true, filePath: destinationPath };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StrmService] Failed to create .strm file', { error: message });
+			logger.error({ err: error }, '[StrmService] Failed to create .strm file');
 			return { success: false, error: message };
 		}
 	}
@@ -365,15 +371,18 @@ export class StrmService {
 		try {
 			if (existsSync(filePath)) {
 				unlinkSync(filePath);
-				logger.info('[StrmService] Deleted .strm file', { path: filePath });
+				logger.info({ path: filePath }, '[StrmService] Deleted .strm file');
 				return true;
 			}
 			return false;
 		} catch (error) {
-			logger.error('[StrmService] Failed to delete .strm file', {
-				path: filePath,
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					path: filePath,
+					err: error
+				},
+				'[StrmService] Failed to delete .strm file'
+			);
 			return false;
 		}
 	}
@@ -549,10 +558,13 @@ export class StrmService {
 		// Remove trailing slash from base URL
 		const baseUrl = newBaseUrl.replace(/\/$/, '');
 
-		logger.info('[StrmService] Starting bulk .strm URL update', {
-			newBaseUrl: baseUrl,
-			hasApiKey: !!options?.apiKey
-		});
+		logger.info(
+			{
+				newBaseUrl: baseUrl,
+				hasApiKey: !!options?.apiKey
+			},
+			'[StrmService] Starting bulk .strm URL update'
+		);
 
 		try {
 			const movieStrmLike = sql`lower(${movieFiles.relativePath}) like '%.strm'`;
@@ -609,10 +621,13 @@ export class StrmService {
 			}
 
 			totalFiles = strmFiles.size;
-			logger.info('[StrmService] Found streamer .strm files to process', {
-				count: totalFiles,
-				skippedMissingMetadata
-			});
+			logger.info(
+				{
+					count: totalFiles,
+					skippedMissingMetadata
+				},
+				'[StrmService] Found streamer .strm files to process'
+			);
 
 			// Process each .strm file
 			for (const filePath of strmFiles) {
@@ -641,11 +656,14 @@ export class StrmService {
 					if (currentContent !== newContent) {
 						writeFileSync(filePath, newContent, 'utf8');
 						updatedFiles++;
-						logger.debug('[StrmService] Updated .strm file', {
-							path: filePath,
-							oldUrl: currentContent.substring(0, 50) + '...',
-							newUrl: newContent.substring(0, 50) + '...'
-						});
+						logger.debug(
+							{
+								path: filePath,
+								oldUrl: currentContent.substring(0, 50) + '...',
+								newUrl: newContent.substring(0, 50) + '...'
+							},
+							'[StrmService] Updated .strm file'
+						);
 					}
 				} catch (error) {
 					const message = error instanceof Error ? error.message : 'Unknown error';
@@ -653,12 +671,15 @@ export class StrmService {
 				}
 			}
 
-			logger.info('[StrmService] Bulk .strm URL update complete', {
-				totalFiles,
-				updatedFiles,
-				unchanged: totalFiles - updatedFiles - errors.length,
-				errors: errors.length
-			});
+			logger.info(
+				{
+					totalFiles,
+					updatedFiles,
+					unchanged: totalFiles - updatedFiles - errors.length,
+					errors: errors.length
+				},
+				'[StrmService] Bulk .strm URL update complete'
+			);
 
 			return {
 				success: true,
@@ -668,7 +689,7 @@ export class StrmService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StrmService] Bulk .strm URL update failed', { error: message });
+			logger.error({ err: error }, '[StrmService] Bulk .strm URL update failed');
 			return {
 				success: false,
 				totalFiles,
@@ -832,12 +853,15 @@ export class StrmService {
 				};
 			}
 
-			logger.info('[StrmService] Creating season pack .strm files', {
-				seriesId,
-				seasonNumber,
-				episodeCount: seasonEpisodes.length,
-				episodeNumbers: seasonEpisodes.map((e) => e.episodeNumber)
-			});
+			logger.info(
+				{
+					seriesId,
+					seasonNumber,
+					episodeCount: seasonEpisodes.length,
+					episodeNumbers: seasonEpisodes.map((e) => e.episodeNumber)
+				},
+				'[StrmService] Creating season pack .strm files'
+			);
 
 			// Process episodes in parallel batches using the direct method (no DB queries)
 			const results = await processInBatches(seasonEpisodes, async (ep) => {
@@ -860,12 +884,15 @@ export class StrmService {
 
 			const successCount = results.filter((r) => r.filePath).length;
 
-			logger.info('[StrmService] Season pack .strm files created', {
-				seriesId,
-				seasonNumber,
-				success: successCount,
-				failed: seasonEpisodes.length - successCount
-			});
+			logger.info(
+				{
+					seriesId,
+					seasonNumber,
+					success: successCount,
+					failed: seasonEpisodes.length - successCount
+				},
+				'[StrmService] Season pack .strm files created'
+			);
 
 			return {
 				success: successCount > 0,
@@ -873,11 +900,14 @@ export class StrmService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StrmService] Failed to create season pack .strm files', {
-				seriesId,
-				seasonNumber,
-				error: message
-			});
+			logger.error(
+				{
+					seriesId,
+					seasonNumber,
+					err: error
+				},
+				'[StrmService] Failed to create season pack .strm files'
+			);
 			return { success: false, results: [], error: message };
 		}
 	}
@@ -960,15 +990,18 @@ export class StrmService {
 				episodeBreakdown[season] = eps.map((e) => e.episodeNumber);
 			}
 
-			logger.info('[StrmService] Creating complete series .strm files', {
-				seriesId,
-				seasonCount: episodesBySeason.size,
-				totalEpisodes: Array.from(episodesBySeason.values()).reduce(
-					(sum, eps) => sum + eps.length,
-					0
-				),
-				episodeBreakdown
-			});
+			logger.info(
+				{
+					seriesId,
+					seasonCount: episodesBySeason.size,
+					totalEpisodes: Array.from(episodesBySeason.values()).reduce(
+						(sum, eps) => sum + eps.length,
+						0
+					),
+					episodeBreakdown
+				},
+				'[StrmService] Creating complete series .strm files'
+			);
 
 			// Process all seasons in parallel, each season processes its episodes in batches
 			const seasonNumbers = Array.from(episodesBySeason.keys()).sort((a, b) => a - b);
@@ -999,13 +1032,16 @@ export class StrmService {
 				totalEpisodes += result.episodeResults.length;
 			}
 
-			logger.info('[StrmService] Complete series .strm files created', {
-				seriesId,
-				seasonsProcessed: seasonResults.length,
-				totalEpisodes,
-				totalSuccess,
-				totalFailed: totalEpisodes - totalSuccess
-			});
+			logger.info(
+				{
+					seriesId,
+					seasonsProcessed: seasonResults.length,
+					totalEpisodes,
+					totalSuccess,
+					totalFailed: totalEpisodes - totalSuccess
+				},
+				'[StrmService] Complete series .strm files created'
+			);
 
 			return {
 				success: totalSuccess > 0,
@@ -1013,10 +1049,13 @@ export class StrmService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StrmService] Failed to create complete series .strm files', {
-				seriesId,
-				error: message
-			});
+			logger.error(
+				{
+					seriesId,
+					err: error
+				},
+				'[StrmService] Failed to create complete series .strm files'
+			);
 			return { success: false, results: [], error: message };
 		}
 	}
@@ -1106,23 +1145,26 @@ export class StrmService {
 			const dir = dirname(destinationPath);
 			if (!existsSync(dir)) {
 				mkdirSync(dir, { recursive: true });
-				logger.debug('[StrmService] Created directory', { dir });
+				logger.debug({ dir }, '[StrmService] Created directory');
 			}
 
 			// Generate NZB streaming URL with API key
 			const content = `${baseUrl}/api/streaming/usenet/${mountId}/${fileIndex}?api_key=${encodeURIComponent(apiKey)}`;
 			writeFileSync(destinationPath, content, 'utf8');
 
-			logger.info('[StrmService] Created NZB .strm file', {
-				path: destinationPath,
-				mountId,
-				fileIndex
-			});
+			logger.info(
+				{
+					path: destinationPath,
+					mountId,
+					fileIndex
+				},
+				'[StrmService] Created NZB .strm file'
+			);
 
 			return { success: true, filePath: destinationPath };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StrmService] Failed to create NZB .strm file', { error: message });
+			logger.error({ err: error }, '[StrmService] Failed to create NZB .strm file');
 			return { success: false, error: message };
 		}
 	}

@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
 import { getSystemSettingsService } from '$lib/server/settings/SystemSettingsService.js';
 import { z } from 'zod';
@@ -31,7 +32,7 @@ export const POST: RequestHandler = async (event) => {
 
 		return json({ success: true, url: url || null });
 	} catch (error) {
-		console.error('Error saving external URL:', error);
+		logger.error({ err: error, component: 'ExternalUrlApi' }, 'Error saving external URL');
 		return json({ error: 'Failed to save external URL' }, { status: 500 });
 	}
 };
@@ -47,7 +48,7 @@ export const GET: RequestHandler = async (event) => {
 
 		return json({ url });
 	} catch (error) {
-		console.error('Error getting external URL:', error);
+		logger.error({ err: error, component: 'ExternalUrlApi' }, 'Error getting external URL');
 		return json({ error: 'Failed to get external URL' }, { status: 500 });
 	}
 };

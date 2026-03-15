@@ -1,6 +1,8 @@
 import { getMigrations } from 'better-auth/db/migration';
 import Database from 'better-sqlite3';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'auth' as const });
 import { getAuthDatabasePath, getAuthSecret } from './secret.js';
 
 /**
@@ -50,7 +52,7 @@ export async function runBetterAuthMigrations(): Promise<void> {
 		logger.info('[Better Auth] Migrations completed successfully');
 	} catch (error) {
 		// Log error but don't crash - Better Auth will try to create tables on first use
-		logger.error('[Better Auth] Migration error:', error);
+		logger.error({ err: error }, '[Better Auth] Migration error:');
 		logger.warn('[Better Auth] Continuing startup - tables may be created on first auth request');
 	} finally {
 		authDb.close();

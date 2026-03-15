@@ -93,7 +93,7 @@ Not recommended. SQLite doesn't handle multiple writers well.
 | Data            | Location                                                                    |
 | --------------- | --------------------------------------------------------------------------- |
 | Database        | `data/cinephage.db` (Docker: `/config/data/cinephage.db`)                   |
-| Logs            | `logs/` (Docker: `/config/logs/`)                                           |
+| Logs            | stdout/stderr (`docker logs`, `journalctl`, or your orchestrator log tool`) |
 | Custom indexers | `data/indexers/definitions/` (Docker: `/config/data/indexers/definitions/`) |
 
 ### Why can't I configure size limits for the Streamer profile?

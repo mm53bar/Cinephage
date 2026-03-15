@@ -5,7 +5,9 @@
  * Loads and saves naming preferences from the namingSettings table.
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'scans' as const });
 import {
 	DEFAULT_NAMING_PRESET_SELECTION,
 	normalizeNamingPresetSelection,
@@ -242,9 +244,12 @@ export class NamingSettingsService {
 		try {
 			settings = db.select().from(namingSettings).all();
 		} catch (error) {
-			logger.warn('[NamingSettingsService] Failed to load settings from DB (using defaults)', {
-				error: error instanceof Error ? error.message : String(error)
-			});
+			logger.warn(
+				{
+					error: error instanceof Error ? error.message : String(error)
+				},
+				'[NamingSettingsService] Failed to load settings from DB (using defaults)'
+			);
 			if (String(error).includes('no such table')) {
 				logger.error(
 					'[NamingSettingsService] CRITICAL: naming_settings table is missing! Please run migrations.'

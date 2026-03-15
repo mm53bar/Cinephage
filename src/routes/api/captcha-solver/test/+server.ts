@@ -40,7 +40,7 @@ export const POST: RequestHandler = async (event) => {
 		const solver = getCaptchaSolver();
 
 		// First, test if there's a challenge
-		logger.info('[API] Testing for challenge', { url });
+		logger.info({ url }, '[API] Testing for challenge');
 		const testResult = await solver.test(url);
 
 		if (!testResult.hasChallenge) {
@@ -52,11 +52,14 @@ export const POST: RequestHandler = async (event) => {
 		}
 
 		// Try to solve it
-		logger.info('[API] Challenge detected, attempting solve', {
-			url,
-			type: testResult.type,
-			confidence: testResult.confidence
-		});
+		logger.info(
+			{
+				url,
+				type: testResult.type,
+				confidence: testResult.confidence
+			},
+			'[API] Challenge detected, attempting solve'
+		);
 
 		const solveResult = await solver.solve({ url });
 

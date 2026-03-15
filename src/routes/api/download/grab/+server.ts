@@ -120,12 +120,15 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		if (!hasMatchingCategory) {
 			const actualContentType = getCategoryContentType(data.categories[0]);
-			logger.error('[Grab] BLOCKED: Release category mismatch - potential wrong content type', {
-				title: data.title,
-				expectedType: data.mediaType,
-				actualContentType,
-				categories: data.categories
-			});
+			logger.error(
+				{
+					title: data.title,
+					expectedType: data.mediaType,
+					actualContentType,
+					categories: data.categories
+				},
+				'[Grab] BLOCKED: Release category mismatch - potential wrong content type'
+			);
 			return json(
 				{
 					success: false,
@@ -157,14 +160,17 @@ export const POST: RequestHandler = async ({ request }) => {
 				(targetTitle.length > 3 && parsedTitle.includes(targetTitle));
 
 			if (!titlesMatch && parsedTitle.length > 0) {
-				logger.error('[Grab] BLOCKED: Release title does not match target series', {
-					releaseTitle: data.title,
-					parsedTitle: parsed.cleanTitle,
-					normalizedParsed: parsedTitle,
-					targetTitle: targetSeries[0].title,
-					normalizedTarget: targetTitle,
-					seriesId: data.seriesId
-				});
+				logger.error(
+					{
+						releaseTitle: data.title,
+						parsedTitle: parsed.cleanTitle,
+						normalizedParsed: parsedTitle,
+						targetTitle: targetSeries[0].title,
+						normalizedTarget: targetTitle,
+						seriesId: data.seriesId
+					},
+					'[Grab] BLOCKED: Release title does not match target series'
+				);
 				return json(
 					{
 						success: false,
@@ -222,9 +228,12 @@ export const POST: RequestHandler = async ({ request }) => {
 				try {
 					await nntpManager.reload();
 				} catch (error) {
-					logger.warn('[Grab] Failed to reload NNTP manager before streaming grab', {
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.warn(
+						{
+							error: error instanceof Error ? error.message : String(error)
+						},
+						'[Grab] Failed to reload NNTP manager before streaming grab'
+					);
 				}
 			}
 
@@ -304,13 +313,16 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// If not accepted and not forced, reject the grab
 		if (!decision.accepted && !data.force) {
-			logger.info('Grab rejected by upgrade validation', {
-				title: data.title,
-				movieId: data.movieId,
-				seriesId: data.seriesId,
-				reason: decision.reason,
-				upgradeStatus: decision.upgradeStatus
-			});
+			logger.info(
+				{
+					title: data.title,
+					movieId: data.movieId,
+					seriesId: data.seriesId,
+					reason: decision.reason,
+					upgradeStatus: decision.upgradeStatus
+				},
+				'Grab rejected by upgrade validation'
+			);
 
 			return json(
 				{
@@ -332,11 +344,14 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Log if force was used to override
 		if (!decision.accepted && data.force) {
-			logger.info('Grab forced despite upgrade validation failure', {
-				title: data.title,
-				reason: decision.reason,
-				upgradeStatus: decision.upgradeStatus
-			});
+			logger.info(
+				{
+					title: data.title,
+					reason: decision.reason,
+					upgradeStatus: decision.upgradeStatus
+				},
+				'Grab forced despite upgrade validation failure'
+			);
 		}
 
 		// Track whether this is an upgrade for the queue record
@@ -404,19 +419,22 @@ export const POST: RequestHandler = async ({ request }) => {
 			(clientConfig.seedRatioLimit ? parseFloat(clientConfig.seedRatioLimit) : undefined);
 		const seedTimeLimit = indexerSeedTime ?? clientConfig.seedTimeLimit ?? undefined;
 
-		logger.info('Grabbing release', {
-			title: data.title,
-			indexer: data.indexerName,
-			client: clientConfig.name,
-			category,
-			hasMagnet: !!data.magnetUrl,
-			hasDownloadUrl: !!data.downloadUrl,
-			hasInfoHash: !!data.infoHash,
-			movieId: data.movieId,
-			seriesId: data.seriesId,
-			seedRatioLimit,
-			seedTimeLimit
-		});
+		logger.info(
+			{
+				title: data.title,
+				indexer: data.indexerName,
+				client: clientConfig.name,
+				category,
+				hasMagnet: !!data.magnetUrl,
+				hasDownloadUrl: !!data.downloadUrl,
+				hasInfoHash: !!data.infoHash,
+				movieId: data.movieId,
+				seriesId: data.seriesId,
+				seedRatioLimit,
+				seedTimeLimit
+			},
+			'Grabbing release'
+		);
 
 		// For Usenet, skip torrent resolution - just pass URL directly to client
 		// For torrents, resolve the download URL to get a magnet link or torrent file
@@ -452,7 +470,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			// Fetch NZB content for availability check
 			if (reconstructedDownloadUrl) {
 				try {
-					logger.info('[Grab] Fetching NZB for pre-flight check', { title: data.title });
+					logger.info({ title: data.title }, '[Grab] Fetching NZB for pre-flight check');
 					const nzbResponse = await fetch(reconstructedDownloadUrl);
 					if (nzbResponse.ok) {
 						const nzbContent = await nzbResponse.text();
@@ -461,17 +479,23 @@ export const POST: RequestHandler = async ({ request }) => {
 						const availability = await checkNzbAvailability(nzbContent);
 
 						if (availability.skipped) {
-							logger.warn('[Grab] NNTP pre-flight check skipped - no servers configured', {
-								title: data.title,
-								indexer: data.indexerName
-							});
+							logger.warn(
+								{
+									title: data.title,
+									indexer: data.indexerName
+								},
+								'[Grab] NNTP pre-flight check skipped - no servers configured'
+							);
 						} else if (!availability.available) {
-							logger.warn('[Grab] NZB availability check failed', {
-								title: data.title,
-								completionPercentage: availability.completionPercentage,
-								checkedSegments: availability.checkedSegments,
-								missingSegments: availability.missingSegments
-							});
+							logger.warn(
+								{
+									title: data.title,
+									completionPercentage: availability.completionPercentage,
+									checkedSegments: availability.checkedSegments,
+									missingSegments: availability.missingSegments
+								},
+								'[Grab] NZB availability check failed'
+							);
 
 							// Auto-blocklist this release from this specific indexer
 							try {
@@ -491,16 +515,22 @@ export const POST: RequestHandler = async ({ request }) => {
 										expiresInHours: 72
 									}
 								);
-								logger.info('[Grab] Auto-blocklisted unavailable release', {
-									title: data.title,
-									indexer: data.indexerName,
-									expiresInHours: 72
-								});
+								logger.info(
+									{
+										title: data.title,
+										indexer: data.indexerName,
+										expiresInHours: 72
+									},
+									'[Grab] Auto-blocklisted unavailable release'
+								);
 							} catch (blocklistError) {
-								logger.warn('[Grab] Failed to add to blocklist', {
-									title: data.title,
-									error: blocklistError instanceof Error ? blocklistError.message : 'Unknown'
-								});
+								logger.warn(
+									{
+										title: data.title,
+										error: blocklistError instanceof Error ? blocklistError.message : 'Unknown'
+									},
+									'[Grab] Failed to add to blocklist'
+								);
 							}
 
 							return json(
@@ -511,21 +541,27 @@ export const POST: RequestHandler = async ({ request }) => {
 								{ status: 400 }
 							);
 						} else {
-							logger.info('[Grab] NZB availability check passed', {
-								title: data.title,
-								completionPercentage: availability.completionPercentage
-							});
+							logger.info(
+								{
+									title: data.title,
+									completionPercentage: availability.completionPercentage
+								},
+								'[Grab] NZB availability check passed'
+							);
 						}
 					}
 				} catch (nzbError) {
-					logger.warn('[Grab] Failed to fetch NZB for pre-flight check, proceeding anyway', {
-						title: data.title,
-						error: nzbError instanceof Error ? nzbError.message : 'Unknown'
-					});
+					logger.warn(
+						{
+							title: data.title,
+							error: nzbError instanceof Error ? nzbError.message : 'Unknown'
+						},
+						'[Grab] Failed to fetch NZB for pre-flight check, proceeding anyway'
+					);
 				}
 			}
 
-			logger.debug('Usenet download ready', { title: data.title });
+			logger.debug({ title: data.title }, 'Usenet download ready');
 		} else {
 			// Resolve torrent - fetches through the indexer with proper auth/cookies
 			const resolutionService = getDownloadResolutionService();
@@ -539,10 +575,13 @@ export const POST: RequestHandler = async ({ request }) => {
 			});
 
 			if (!resolved.success) {
-				logger.error('Failed to resolve download', {
-					title: data.title,
-					error: resolved.error
-				});
+				logger.error(
+					{
+						title: data.title,
+						error: resolved.error
+					},
+					'Failed to resolve download'
+				);
 				return json(
 					{
 						success: false,
@@ -552,12 +591,15 @@ export const POST: RequestHandler = async ({ request }) => {
 				);
 			}
 
-			logger.debug('Download resolved', {
-				title: data.title,
-				hasMagnet: !!resolved.magnetUrl,
-				hasTorrentFile: !!resolved.torrentFile,
-				infoHash: resolved.infoHash
-			});
+			logger.debug(
+				{
+					title: data.title,
+					hasMagnet: !!resolved.magnetUrl,
+					hasTorrentFile: !!resolved.torrentFile,
+					infoHash: resolved.infoHash
+				},
+				'Download resolved'
+			);
 		}
 
 		// Send to download client
@@ -584,13 +626,16 @@ export const POST: RequestHandler = async ({ request }) => {
 				(addError as Error & { existingTorrent?: DownloadInfo }).existingTorrent || null;
 
 			if (isDuplicate && existingTorrent) {
-				logger.info('Handling duplicate torrent - linking to existing download', {
-					title: data.title,
-					existingName: existingTorrent.name,
-					existingStatus: existingTorrent.status,
-					existingProgress: existingTorrent.progress,
-					hash: existingTorrent.hash
-				});
+				logger.info(
+					{
+						title: data.title,
+						existingName: existingTorrent.name,
+						existingStatus: existingTorrent.status,
+						existingProgress: existingTorrent.progress,
+						hash: existingTorrent.hash
+					},
+					'Handling duplicate torrent - linking to existing download'
+				);
 
 				// Use the existing torrent's hash
 				hash = existingTorrent.hash;
@@ -626,21 +671,27 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Log appropriate message based on whether it was a duplicate
 		if (existingTorrent) {
-			logger.info('Duplicate torrent linked to queue', {
-				title: data.title,
-				hash,
-				queueId: queueItem.id,
-				existingStatus: existingTorrent.status,
-				existingProgress: Math.round(existingTorrent.progress * 100) + '%',
-				client: clientConfig.name
-			});
+			logger.info(
+				{
+					title: data.title,
+					hash,
+					queueId: queueItem.id,
+					existingStatus: existingTorrent.status,
+					existingProgress: Math.round(existingTorrent.progress * 100) + '%',
+					client: clientConfig.name
+				},
+				'Duplicate torrent linked to queue'
+			);
 		} else {
-			logger.info('Release grabbed and queued successfully', {
-				title: data.title,
-				hash,
-				queueId: queueItem.id,
-				client: clientConfig.name
-			});
+			logger.info(
+				{
+					title: data.title,
+					hash,
+					queueId: queueItem.id,
+					client: clientConfig.name
+				},
+				'Release grabbed and queued successfully'
+			);
 		}
 
 		return json({
@@ -657,7 +708,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		} satisfies GrabResponse);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.error('Failed to grab release', { error: message, title: data.title });
+		logger.error({ error: message, title: data.title }, 'Failed to grab release');
 
 		return json({ success: false, error: message } satisfies GrabResponse, { status: 500 });
 	}
@@ -670,10 +721,13 @@ export const POST: RequestHandler = async ({ request }) => {
 async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 	const { mediaType, movieId, seriesId, downloadUrl, title, indexerId, indexerName } = data;
 
-	logger.info('[Grab] Handling streaming release', {
-		title,
-		downloadUrl: downloadUrl ? redactUrl(downloadUrl) : null
-	});
+	logger.info(
+		{
+			title,
+			downloadUrl: downloadUrl ? redactUrl(downloadUrl) : null
+		},
+		'[Grab] Handling streaming release'
+	);
 
 	// Parse the stream:// URL to get TMDB ID and episode info
 	const parsed = StrmService.parseStreamUrl(downloadUrl || '');
@@ -709,10 +763,13 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 	});
 
 	if (!result.success || !result.filePath) {
-		logger.error('[Grab] Failed to create .strm file', {
-			title,
-			error: result.error
-		});
+		logger.error(
+			{
+				title,
+				error: result.error
+			},
+			'[Grab] Failed to create .strm file'
+		);
 		return json(
 			{
 				success: false,
@@ -722,10 +779,13 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 		);
 	}
 
-	logger.info('[Grab] Created .strm file for streaming release', {
-		title,
-		filePath: result.filePath
-	});
+	logger.info(
+		{
+			title,
+			filePath: result.filePath
+		},
+		'[Grab] Created .strm file for streaming release'
+	);
 
 	// Now add the file to the database (immediate import)
 	try {
@@ -802,11 +862,14 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 				importedAt: new Date().toISOString()
 			});
 
-			logger.info('[Grab] Added streaming movie file to database', {
-				movieId,
-				fileId,
-				relativePath
-			});
+			logger.info(
+				{
+					movieId,
+					fileId,
+					relativePath
+				},
+				'[Grab] Added streaming movie file to database'
+			);
 			libraryMediaEvents.emitMovieUpdated(movieId);
 		} else if (
 			mediaType === 'tv' &&
@@ -890,12 +953,15 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 				importedAt: new Date().toISOString()
 			});
 
-			logger.info('[Grab] Added streaming episode file to database', {
-				seriesId,
-				episodeId: episodeRow.id,
-				fileId,
-				relativePath
-			});
+			logger.info(
+				{
+					seriesId,
+					episodeId: episodeRow.id,
+					fileId,
+					relativePath
+				},
+				'[Grab] Added streaming episode file to database'
+			);
 			libraryMediaEvents.emitSeriesUpdated(seriesId);
 		} else {
 			return json(
@@ -921,10 +987,13 @@ async function handleStreamingGrab(data: GrabRequest): Promise<Response> {
 		} satisfies GrabResponse);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.error('[Grab] Failed to add streaming file to database', {
-			title,
-			error: message
-		});
+		logger.error(
+			{
+				title,
+				error: message
+			},
+			'[Grab] Failed to add streaming file to database'
+		);
 		return json({ success: false, error: `Database error: ${message}` } satisfies GrabResponse, {
 			status: 500
 		});
@@ -948,11 +1017,14 @@ async function handleStreamingSeasonPack(
 	const { seriesId, title, indexerId, indexerName } = data;
 	const seasonNumber = parsed.season!;
 
-	logger.info('[Grab] Handling streaming season pack', {
-		seriesId,
-		seasonNumber,
-		title
-	});
+	logger.info(
+		{
+			seriesId,
+			seasonNumber,
+			title
+		},
+		'[Grab] Handling streaming season pack'
+	);
 
 	if (!seriesId) {
 		return json(
@@ -984,11 +1056,14 @@ async function handleStreamingSeasonPack(
 	});
 
 	if (!strmResult.success || strmResult.results.length === 0) {
-		logger.error('[Grab] Failed to create season pack .strm files', {
-			seriesId,
-			seasonNumber,
-			error: strmResult.error
-		});
+		logger.error(
+			{
+				seriesId,
+				seasonNumber,
+				error: strmResult.error
+			},
+			'[Grab] Failed to create season pack .strm files'
+		);
 		return json(
 			{
 				success: false,
@@ -1030,11 +1105,14 @@ async function handleStreamingSeasonPack(
 	// Collect all file records (no DB operations in this loop)
 	for (const epResult of strmResult.results) {
 		if (!epResult.filePath) {
-			logger.warn('[Grab] Skipping episode without .strm file', {
-				episodeId: epResult.episodeId,
-				episodeNumber: epResult.episodeNumber,
-				error: epResult.error
-			});
+			logger.warn(
+				{
+					episodeId: epResult.episodeId,
+					episodeNumber: epResult.episodeNumber,
+					error: epResult.error
+				},
+				'[Grab] Skipping episode without .strm file'
+			);
 			continue;
 		}
 
@@ -1067,11 +1145,14 @@ async function handleStreamingSeasonPack(
 			episodeIdsToUpdate.push(epResult.episodeId);
 			totalSize += stats.size;
 		} catch (error) {
-			logger.error('[Grab] Failed to prepare DB record for episode', {
-				episodeId: epResult.episodeId,
-				episodeNumber: epResult.episodeNumber,
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					episodeId: epResult.episodeId,
+					episodeNumber: epResult.episodeNumber,
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'[Grab] Failed to prepare DB record for episode'
+			);
 		}
 	}
 
@@ -1096,9 +1177,12 @@ async function handleStreamingSeasonPack(
 
 	const createdEpisodeIds = episodeIdsToUpdate;
 
-	logger.debug('[Grab] Batch inserted episode file records', {
-		count: fileRecords.length
-	});
+	logger.debug(
+		{
+			count: fileRecords.length
+		},
+		'[Grab] Batch inserted episode file records'
+	);
 
 	// Create single history record for the entire season pack
 	await db.insert(downloadHistory).values({
@@ -1117,12 +1201,15 @@ async function handleStreamingSeasonPack(
 		importedAt: new Date().toISOString()
 	});
 
-	logger.info('[Grab] Created streaming season pack files', {
-		seriesId,
-		seasonNumber,
-		episodesCreated: createdFileIds.length,
-		totalEpisodes: strmResult.results.length
-	});
+	logger.info(
+		{
+			seriesId,
+			seasonNumber,
+			episodesCreated: createdFileIds.length,
+			totalEpisodes: strmResult.results.length
+		},
+		'[Grab] Created streaming season pack files'
+	);
 	libraryMediaEvents.emitSeriesUpdated(seriesId);
 
 	return json({
@@ -1156,10 +1243,13 @@ async function handleStreamingCompleteSeries(
 ): Promise<Response> {
 	const { seriesId, title, indexerId, indexerName } = data;
 
-	logger.info('[Grab] Handling streaming complete series', {
-		seriesId,
-		title
-	});
+	logger.info(
+		{
+			seriesId,
+			title
+		},
+		'[Grab] Handling streaming complete series'
+	);
 
 	if (!seriesId) {
 		return json(
@@ -1190,10 +1280,13 @@ async function handleStreamingCompleteSeries(
 	});
 
 	if (!strmResult.success || strmResult.results.length === 0) {
-		logger.error('[Grab] Failed to create complete series .strm files', {
-			seriesId,
-			error: strmResult.error
-		});
+		logger.error(
+			{
+				seriesId,
+				error: strmResult.error
+			},
+			'[Grab] Failed to create complete series .strm files'
+		);
 		return json(
 			{
 				success: false,
@@ -1236,12 +1329,15 @@ async function handleStreamingCompleteSeries(
 	for (const seasonResult of strmResult.results) {
 		for (const epResult of seasonResult.episodeResults) {
 			if (!epResult.filePath) {
-				logger.warn('[Grab] Skipping episode without .strm file', {
-					seasonNumber: seasonResult.seasonNumber,
-					episodeId: epResult.episodeId,
-					episodeNumber: epResult.episodeNumber,
-					error: epResult.error
-				});
+				logger.warn(
+					{
+						seasonNumber: seasonResult.seasonNumber,
+						episodeId: epResult.episodeId,
+						episodeNumber: epResult.episodeNumber,
+						error: epResult.error
+					},
+					'[Grab] Skipping episode without .strm file'
+				);
 				continue;
 			}
 
@@ -1275,12 +1371,15 @@ async function handleStreamingCompleteSeries(
 				episodeIdsToUpdate.push(epResult.episodeId);
 				totalSize += stats.size;
 			} catch (error) {
-				logger.error('[Grab] Failed to prepare DB record for episode', {
-					seasonNumber: seasonResult.seasonNumber,
-					episodeId: epResult.episodeId,
-					episodeNumber: epResult.episodeNumber,
-					error: error instanceof Error ? error.message : 'Unknown error'
-				});
+				logger.error(
+					{
+						seasonNumber: seasonResult.seasonNumber,
+						episodeId: epResult.episodeId,
+						episodeNumber: epResult.episodeNumber,
+						error: error instanceof Error ? error.message : 'Unknown error'
+					},
+					'[Grab] Failed to prepare DB record for episode'
+				);
 			}
 		}
 	}
@@ -1306,10 +1405,13 @@ async function handleStreamingCompleteSeries(
 
 	const createdEpisodeIds = episodeIdsToUpdate;
 
-	logger.debug('[Grab] Batch inserted episode file records', {
-		count: fileRecords.length,
-		seasons: strmResult.results.length
-	});
+	logger.debug(
+		{
+			count: fileRecords.length,
+			seasons: strmResult.results.length
+		},
+		'[Grab] Batch inserted episode file records'
+	);
 
 	// Create single history record for the entire complete series
 	await db.insert(downloadHistory).values({
@@ -1328,11 +1430,14 @@ async function handleStreamingCompleteSeries(
 		importedAt: new Date().toISOString()
 	});
 
-	logger.info('[Grab] Created streaming complete series files', {
-		seriesId,
-		seasonsProcessed: strmResult.results.length,
-		episodesCreated: createdFileIds.length
-	});
+	logger.info(
+		{
+			seriesId,
+			seasonsProcessed: strmResult.results.length,
+			episodesCreated: createdFileIds.length
+		},
+		'[Grab] Created streaming complete series files'
+	);
 	libraryMediaEvents.emitSeriesUpdated(seriesId);
 
 	return json({
@@ -1365,12 +1470,15 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 		seasonNumber
 	} = data;
 
-	logger.info('[Grab] Handling NZB streaming release', {
-		title,
-		downloadUrl: rawDownloadUrl ? redactUrl(rawDownloadUrl) : null,
-		movieId,
-		seriesId
-	});
+	logger.info(
+		{
+			title,
+			downloadUrl: rawDownloadUrl ? redactUrl(rawDownloadUrl) : null,
+			movieId,
+			seriesId
+		},
+		'[Grab] Handling NZB streaming release'
+	);
 
 	if (!rawDownloadUrl) {
 		return json(
@@ -1439,22 +1547,28 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 		const streamService = getUsenetStreamService();
 		const streamability = await streamService.checkStreamability(mount.id);
 
-		logger.info('[Grab] Streamability check result', {
-			title,
-			mountId: mount.id,
-			canStream: streamability.canStream,
-			archiveType: streamability.archiveType,
-			error: streamability.error
-		});
+		logger.info(
+			{
+				title,
+				mountId: mount.id,
+				canStream: streamability.canStream,
+				archiveType: streamability.archiveType,
+				error: streamability.error
+			},
+			'[Grab] Streamability check result'
+		);
 
 		// If content cannot be streamed (e.g., RAR-compressed), return error
 		if (!streamability.canStream) {
-			logger.info('[Grab] NZB content not streamable', {
-				title,
-				mountId: mount.id,
-				archiveType: streamability.archiveType,
-				error: streamability.error
-			});
+			logger.info(
+				{
+					title,
+					mountId: mount.id,
+					archiveType: streamability.archiveType,
+					error: streamability.error
+				},
+				'[Grab] NZB content not streamable'
+			);
 
 			// Clean up the mount since it won't be used
 			await nzbMountManager.deleteMount(mount.id);
@@ -1579,11 +1693,14 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 				const episode = fileParsed.episode?.episodes?.[0];
 
 				if (season === undefined || episode === undefined) {
-					logger.debug('[Grab] Could not determine episode for NZB file', {
-						fileName: mediaFile.name,
-						season,
-						episode
-					});
+					logger.debug(
+						{
+							fileName: mediaFile.name,
+							season,
+							episode
+						},
+						'[Grab] Could not determine episode for NZB file'
+					);
 					continue;
 				}
 
@@ -1597,11 +1714,14 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 				});
 
 				if (!episodeRow) {
-					logger.debug('[Grab] Episode not found for NZB file', {
-						fileName: mediaFile.name,
-						season,
-						episode
-					});
+					logger.debug(
+						{
+							fileName: mediaFile.name,
+							season,
+							episode
+						},
+						'[Grab] Episode not found for NZB file'
+					);
 					continue;
 				}
 
@@ -1674,12 +1794,15 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 			);
 		}
 
-		logger.info('[Grab] Created NZB streaming mount and .strm files', {
-			title,
-			mountId: mount.id,
-			filesCreated: createdFiles.length,
-			mediaFiles: mount.mediaFiles.length
-		});
+		logger.info(
+			{
+				title,
+				mountId: mount.id,
+				filesCreated: createdFiles.length,
+				mediaFiles: mount.mediaFiles.length
+			},
+			'[Grab] Created NZB streaming mount and .strm files'
+		);
 		if (mediaType === 'movie' && movieId) {
 			libraryMediaEvents.emitMovieUpdated(movieId);
 		} else if (mediaType === 'tv' && seriesId) {
@@ -1700,10 +1823,13 @@ async function handleNzbStreamingGrab(data: GrabRequest): Promise<Response> {
 		} satisfies GrabResponse);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
-		logger.error('[Grab] Failed to handle NZB streaming grab', {
-			title,
-			error: message
-		});
+		logger.error(
+			{
+				title,
+				error: message
+			},
+			'[Grab] Failed to handle NZB streaming grab'
+		);
 		return json({ success: false, error: message } satisfies GrabResponse, { status: 500 });
 	}
 }

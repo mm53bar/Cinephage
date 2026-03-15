@@ -7,6 +7,8 @@
 
 import type { RequestEvent, RequestHandler } from '@sveltejs/kit';
 
+import { logger } from '$lib/logging';
+
 type AnyRequestHandler = RequestHandler<any, any>;
 type TestAuthMode = 'admin' | 'user' | false;
 
@@ -43,6 +45,9 @@ function createTestUser(role: 'admin' | 'user'): App.Locals['user'] {
 function createTestLocals(auth: TestAuthMode): App.Locals {
 	return {
 		correlationId: 'test-correlation-id',
+		requestId: 'test-correlation-id',
+		supportId: 'test-support-id',
+		logger,
 		user: auth ? createTestUser(auth) : null,
 		session: null,
 		apiKey: null,

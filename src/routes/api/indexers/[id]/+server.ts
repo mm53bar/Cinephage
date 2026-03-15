@@ -83,26 +83,35 @@ export const PUT: RequestHandler = async (event) => {
 
 		// If streaming indexer's baseUrl changed, trigger bulk .strm file update
 		if (isStreamingIndexer && newBaseUrl && oldBaseUrl !== newBaseUrl) {
-			logger.info('[IndexerAPI] Streaming baseUrl changed, triggering .strm file update', {
-				oldBaseUrl,
-				newBaseUrl
-			});
+			logger.info(
+				{
+					oldBaseUrl,
+					newBaseUrl
+				},
+				'[IndexerAPI] Streaming baseUrl changed, triggering .strm file update'
+			);
 
 			// Run in background to not block the response
 			import('$lib/server/streaming')
 				.then(async ({ strmService, getStreamingBaseUrl }) => {
 					const baseUrl = await getStreamingBaseUrl(newBaseUrl);
 					const result = await strmService.bulkUpdateStrmUrls(baseUrl);
-					logger.info('[IndexerAPI] Background .strm update complete', {
-						totalFiles: result.totalFiles,
-						updatedFiles: result.updatedFiles,
-						errors: result.errors.length
-					});
+					logger.info(
+						{
+							totalFiles: result.totalFiles,
+							updatedFiles: result.updatedFiles,
+							errors: result.errors.length
+						},
+						'[IndexerAPI] Background .strm update complete'
+					);
 				})
 				.catch((err) => {
-					logger.error('[IndexerAPI] Failed to update .strm files after baseUrl change', {
-						error: err instanceof Error ? err.message : 'Unknown error'
-					});
+					logger.error(
+						{
+							error: err instanceof Error ? err.message : 'Unknown error'
+						},
+						'[IndexerAPI] Failed to update .strm files after baseUrl change'
+					);
 				});
 		}
 

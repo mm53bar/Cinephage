@@ -7,7 +7,9 @@
  * - PunctuationMixin: Title normalization for matching
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'subtitles' as const });
 import { unzipSync } from 'fflate';
 
 // ============================================================================
@@ -115,10 +117,10 @@ export async function executeWithRetry<T>(
 			// Don't wait after last attempt
 			if (attempt < maxAttempts) {
 				logger.debug(
-					`[Retry] ${operationName} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms`,
 					{
 						error: lastError.message
-					}
+					},
+					`[Retry] ${operationName} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms`
 				);
 
 				await sleep(delay);
@@ -323,9 +325,12 @@ export function extractFromZip(
 		// Try to find best match
 		return findBestSubtitleInArchive(files, { preferredLanguage, episodeNumber });
 	} catch (error) {
-		logger.warn('Failed to extract ZIP archive', {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.warn(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to extract ZIP archive'
+		);
 		return undefined;
 	}
 }
@@ -398,9 +403,12 @@ export function extractAllFromZip(data: Buffer): ExtractedFile[] {
 
 		return files;
 	} catch (error) {
-		logger.warn('Failed to extract ZIP archive', {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.warn(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'Failed to extract ZIP archive'
+		);
 		return [];
 	}
 }

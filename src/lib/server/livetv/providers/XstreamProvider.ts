@@ -8,8 +8,10 @@
 import { db } from '$lib/server/db';
 import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { randomUUID } from 'crypto';
+
+const logger = createChildLogger({ logDomain: 'livetv' as const });
 import type {
 	LiveTvProvider,
 	AuthResult,
@@ -103,7 +105,7 @@ export class XstreamProvider implements LiveTvProvider {
 
 	async authenticate(account: LiveTvAccount): Promise<AuthResult> {
 		try {
-			logger.debug('[XstreamProvider] Starting authentication', { accountId: account.id });
+			logger.debug({ accountId: account.id }, '[XstreamProvider] Starting authentication');
 			const result = await this.makeAuthRequest(account);
 
 			if (result.user_info?.auth === 0) {
@@ -119,7 +121,7 @@ export class XstreamProvider implements LiveTvProvider {
 
 			this.tokens.set(account.id, { token, expiry });
 
-			logger.debug('[XstreamProvider] Authentication successful', { accountId: account.id });
+			logger.debug({ accountId: account.id }, '[XstreamProvider] Authentication successful');
 
 			return {
 				success: true,
@@ -128,10 +130,13 @@ export class XstreamProvider implements LiveTvProvider {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			logger.error('[XstreamProvider] Authentication failed', {
-				accountId: account.id,
-				error: message
-			});
+			logger.error(
+				{
+					accountId: account.id,
+					error: message
+				},
+				'[XstreamProvider] Authentication failed'
+			);
 			return {
 				success: false,
 				error: message
@@ -141,7 +146,7 @@ export class XstreamProvider implements LiveTvProvider {
 
 	async testConnection(account: LiveTvAccount): Promise<LiveTvAccountTestResult> {
 		try {
-			logger.debug('[XstreamProvider] Testing connection', { accountId: account.id });
+			logger.debug({ accountId: account.id }, '[XstreamProvider] Testing connection');
 			const result = await this.makeAuthRequest(account);
 
 			if (result.user_info?.auth === 0) {
@@ -171,17 +176,23 @@ export class XstreamProvider implements LiveTvProvider {
 				categoryCount = categories.length;
 				channelCount = streams.length;
 			} catch (error) {
-				logger.warn('[XstreamProvider] Connection test succeeded, but count fetch failed', {
-					accountId: account.id,
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						accountId: account.id,
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'[XstreamProvider] Connection test succeeded, but count fetch failed'
+				);
 			}
 
-			logger.info('[XstreamProvider] Connection test successful', {
-				accountId: account.id,
-				channelCount,
-				categoryCount
-			});
+			logger.info(
+				{
+					accountId: account.id,
+					channelCount,
+					categoryCount
+				},
+				'[XstreamProvider] Connection test successful'
+			);
 
 			return {
 				success: true,
@@ -196,10 +207,13 @@ export class XstreamProvider implements LiveTvProvider {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			logger.error('[XstreamProvider] Connection test failed', {
-				accountId: account.id,
-				error: message
-			});
+			logger.error(
+				{
+					accountId: account.id,
+					error: message
+				},
+				'[XstreamProvider] Connection test failed'
+			);
 			return {
 				success: false,
 				error: message
@@ -215,7 +229,7 @@ export class XstreamProvider implements LiveTvProvider {
 
 	async syncChannels(accountId: string): Promise<ChannelSyncResult> {
 		const startTime = Date.now();
-		logger.info('[XstreamProvider] Starting channel sync', { accountId });
+		logger.info({ accountId }, '[XstreamProvider] Starting channel sync');
 
 		try {
 			const accountRecord = await db
@@ -236,14 +250,17 @@ export class XstreamProvider implements LiveTvProvider {
 				throw new Error('XStream config not found for account');
 			}
 
-			logger.info('[XstreamProvider] Fetching categories', {
-				accountId,
-				serverUrl: config.baseUrl
-			});
+			logger.info(
+				{
+					accountId,
+					serverUrl: config.baseUrl
+				},
+				'[XstreamProvider] Fetching categories'
+			);
 
 			// Fetch categories first
 			const categories = await this.fetchXstreamCategories(config);
-			logger.info('[XstreamProvider] Categories fetched', { accountId, count: categories.length });
+			logger.info({ accountId, count: categories.length }, '[XstreamProvider] Categories fetched');
 
 			const existingCategories = await db
 				.select()
@@ -282,10 +299,13 @@ export class XstreamProvider implements LiveTvProvider {
 				}
 			}
 
-			logger.info('[XstreamProvider] Fetching streams by category', {
-				accountId,
-				categoryCount: categories.length
-			});
+			logger.info(
+				{
+					accountId,
+					categoryCount: categories.length
+				},
+				'[XstreamProvider] Fetching streams by category'
+			);
 
 			// Fetch streams in parallel batches for better performance
 			const CONCURRENT_REQUESTS = 10;
@@ -301,11 +321,14 @@ export class XstreamProvider implements LiveTvProvider {
 							return await this.fetchXstreamStreamsByCategory(config, category.category_id);
 						} catch (error) {
 							const message = error instanceof Error ? error.message : String(error);
-							logger.warn('[XstreamProvider] Failed to fetch streams for category', {
-								accountId,
-								categoryId: category.category_id,
-								error: message
-							});
+							logger.warn(
+								{
+									accountId,
+									categoryId: category.category_id,
+									error: message
+								},
+								'[XstreamProvider] Failed to fetch streams for category'
+							);
 							return [];
 						}
 					})
@@ -314,16 +337,19 @@ export class XstreamProvider implements LiveTvProvider {
 				// Flatten results and add to allStreams
 				results.forEach((streams) => allStreams.push(...streams));
 
-				logger.info('[XstreamProvider] Batch progress', {
-					accountId,
-					processed: Math.min(i + CONCURRENT_REQUESTS, categories.length),
-					total: categories.length,
-					streamsSoFar: allStreams.length
-				});
+				logger.info(
+					{
+						accountId,
+						processed: Math.min(i + CONCURRENT_REQUESTS, categories.length),
+						total: categories.length,
+						streamsSoFar: allStreams.length
+					},
+					'[XstreamProvider] Batch progress'
+				);
 			}
 
 			const streams = allStreams;
-			logger.info('[XstreamProvider] Streams fetched', { accountId, count: streams.length });
+			logger.info({ accountId, count: streams.length }, '[XstreamProvider] Streams fetched');
 
 			const existingChannels = await db
 				.select()
@@ -335,18 +361,21 @@ export class XstreamProvider implements LiveTvProvider {
 			let channelsUpdated = 0;
 			let channelsRemoved = 0;
 
-			logger.info('[XstreamProvider] Processing streams', { accountId, count: streams.length });
+			logger.info({ accountId, count: streams.length }, '[XstreamProvider] Processing streams');
 
 			for (let i = 0; i < streams.length; i++) {
 				const stream = streams[i];
 
 				// Log progress every 1000 channels
 				if (i % 1000 === 0 && i > 0) {
-					logger.info('[XstreamProvider] Processing progress', {
-						accountId,
-						processed: i,
-						total: streams.length
-					});
+					logger.info(
+						{
+							accountId,
+							processed: i,
+							total: streams.length
+						},
+						'[XstreamProvider] Processing progress'
+					);
 				}
 
 				const xstreamData: XstreamChannelData = {
@@ -428,15 +457,18 @@ export class XstreamProvider implements LiveTvProvider {
 
 			const duration = Date.now() - startTime;
 
-			logger.info('[XstreamProvider] Channel sync completed', {
-				accountId,
-				categoriesAdded,
-				categoriesUpdated,
-				channelsAdded,
-				channelsUpdated,
-				channelsRemoved,
-				duration
-			});
+			logger.info(
+				{
+					accountId,
+					categoriesAdded,
+					categoriesUpdated,
+					channelsAdded,
+					channelsUpdated,
+					channelsRemoved,
+					duration
+				},
+				'[XstreamProvider] Channel sync completed'
+			);
 
 			return {
 				success: true,
@@ -451,11 +483,14 @@ export class XstreamProvider implements LiveTvProvider {
 			const message = error instanceof Error ? error.message : String(error);
 			const duration = Date.now() - startTime;
 
-			logger.error('[XstreamProvider] Channel sync failed', {
-				accountId,
-				error: message,
-				duration
-			});
+			logger.error(
+				{
+					accountId,
+					error: message,
+					duration
+				},
+				'[XstreamProvider] Channel sync failed'
+			);
 
 			await db
 				.update(livetvAccounts)
@@ -643,31 +678,36 @@ export class XstreamProvider implements LiveTvProvider {
 			}
 
 			if (failedChannelCount > 0 || errorChannelCount > 0) {
-				logger.warn('[XstreamProvider] EPG fetch completed with channel issues', {
-					accountId: account.id,
-					channelsChecked: channels.length,
-					failedChannels: failedChannelCount,
-					errorChannels: errorChannelCount,
-					failedChannelSamples,
-					errorChannelSamples,
-					suppressedFailedChannelLogs: Math.max(
-						0,
-						failedChannelCount - failedChannelSamples.length
-					),
-					suppressedErrorChannelLogs: Math.max(0, errorChannelCount - errorChannelSamples.length)
-				});
+				logger.warn(
+					{
+						accountId: account.id,
+						channelsChecked: channels.length,
+						failedChannels: failedChannelCount,
+						errorChannels: errorChannelCount,
+						failedChannelSamples,
+						errorChannelSamples,
+						suppressedFailedChannelLogs: Math.max(
+							0,
+							failedChannelCount - failedChannelSamples.length
+						),
+						suppressedErrorChannelLogs: Math.max(0, errorChannelCount - errorChannelSamples.length)
+					},
+					'[XstreamProvider] EPG fetch completed with channel issues'
+				);
 			}
 
-			logger.info('[XstreamProvider] EPG fetch complete', {
-				accountId: account.id,
-				programsFetched: programs.length,
-				channelsChecked: channels.length
-			});
+			logger.info(
+				{
+					accountId: account.id,
+					programsFetched: programs.length,
+					channelsChecked: channels.length
+				},
+				'[XstreamProvider] EPG fetch complete'
+			);
 
 			return programs;
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			logger.error('[XstreamProvider] EPG fetch failed', { accountId: account.id, error: message });
+			logger.error({ accountId: account.id, err: error }, '[XstreamProvider] EPG fetch failed');
 			return [];
 		}
 	}
@@ -812,7 +852,7 @@ export class XstreamProvider implements LiveTvProvider {
 		const baseUrl = config.baseUrl.replace(/\/$/, '');
 		const url = `${baseUrl}/player_api.php?username=${encodeURIComponent(config.username)}&password=${encodeURIComponent(config.password)}`;
 
-		logger.debug('[XstreamProvider] Making auth request', { url: baseUrl });
+		logger.debug({ url: baseUrl }, '[XstreamProvider] Making auth request');
 
 		const response = await fetch(url, {
 			headers: {
@@ -831,7 +871,7 @@ export class XstreamProvider implements LiveTvProvider {
 		const baseUrl = config.baseUrl.replace(/\/$/, '');
 		const url = `${baseUrl}/player_api.php?username=${encodeURIComponent(config.username)}&password=${encodeURIComponent(config.password)}&action=get_live_categories`;
 
-		logger.debug('[XstreamProvider] Fetching categories', { serverUrl: baseUrl });
+		logger.debug({ serverUrl: baseUrl }, '[XstreamProvider] Fetching categories');
 
 		const response = await fetch(url, {
 			headers: {
@@ -852,8 +892,8 @@ export class XstreamProvider implements LiveTvProvider {
 		const url = `${baseUrl}/player_api.php?username=${encodeURIComponent(config.username)}&password=${encodeURIComponent(config.password)}&action=get_live_streams`;
 
 		logger.info(
-			'[XstreamProvider] Fetching streams - this may take a while for large channel lists',
-			{ serverUrl: baseUrl }
+			{ serverUrl: baseUrl },
+			'[XstreamProvider] Fetching streams - this may take a while for large channel lists'
 		);
 
 		const response = await fetch(url, {

@@ -229,11 +229,14 @@ export const POST: RequestHandler = async (event) => {
 
 		// Fetch and store alternate titles from TMDB (non-blocking)
 		fetchAndStoreMovieAlternateTitles(newMovie.id, tmdbId).catch((err) => {
-			logger.warn('Failed to fetch alternate titles for movie', {
-				movieId: newMovie.id,
-				tmdbId,
-				error: err instanceof Error ? err.message : String(err)
-			});
+			logger.warn(
+				{
+					movieId: newMovie.id,
+					tmdbId,
+					error: err instanceof Error ? err.message : String(err)
+				},
+				'Failed to fetch alternate titles for movie'
+			);
 		});
 
 		// Trigger search if requested and movie is monitored (shared logic)

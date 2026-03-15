@@ -300,9 +300,8 @@
 					inLibrary: statusMap[p.id]?.inLibrary ?? false
 				}))
 			};
-		} catch (e) {
-			// Collection fetch is non-critical, just log and continue
-			console.warn('Failed to fetch collection data:', e);
+		} catch (_e) {
+			// Collection fetch is non-critical, just continue without collection extras
 		}
 	}
 

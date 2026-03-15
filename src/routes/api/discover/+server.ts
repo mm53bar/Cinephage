@@ -120,7 +120,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		});
 	} catch (e) {
 		const message = e instanceof Error ? e.message : 'Unknown error';
-		logger.error('Discover API error', e, { errorMessage: message });
+		logger.error({ err: e, ...{ errorMessage: message } }, 'Discover API error');
 		return json({ error: 'Failed to load content' }, { status: 500 });
 	}
 };

@@ -1,4 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
+
+import { logger } from '$lib/logging';
 import { getAuthSecret } from '../auth/secret.js';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -50,7 +52,10 @@ export function decryptApiKey(encryptedData: string): string | null {
 
 		return decrypted;
 	} catch (error) {
-		console.error('Failed to decrypt API key:', error);
+		logger.error(
+			{ err: error, component: 'ApiKeyCrypto', logDomain: 'auth' },
+			'Failed to decrypt API key'
+		);
 		return null;
 	}
 }

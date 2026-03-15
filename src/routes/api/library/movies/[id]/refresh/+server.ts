@@ -42,10 +42,13 @@ export const POST: RequestHandler = async ({ params }) => {
 		const [tmdbMovie, externalIds] = await Promise.all([
 			tmdb.getMovie(movieData.tmdbId),
 			tmdb.getMovieExternalIds(movieData.tmdbId).catch((err) => {
-				logger.warn('[API] Failed to fetch movie external IDs', {
-					tmdbId: movieData.tmdbId,
-					error: err instanceof Error ? err.message : String(err)
-				});
+				logger.warn(
+					{
+						tmdbId: movieData.tmdbId,
+						error: err instanceof Error ? err.message : String(err)
+					},
+					'[API] Failed to fetch movie external IDs'
+				);
 				return null;
 			})
 		]);
@@ -71,11 +74,14 @@ export const POST: RequestHandler = async ({ params }) => {
 		// Fetch updated movie data
 		const [updatedMovie] = await db.select().from(movies).where(eq(movies.id, id));
 
-		logger.info('[API] Movie metadata refreshed', {
-			id,
-			title: updatedMovie.title,
-			imdbId: updatedMovie.imdbId
-		});
+		logger.info(
+			{
+				id,
+				title: updatedMovie.title,
+				imdbId: updatedMovie.imdbId
+			},
+			'[API] Movie metadata refreshed'
+		);
 
 		return json({
 			success: true,
@@ -93,10 +99,16 @@ export const POST: RequestHandler = async ({ params }) => {
 			}
 		});
 	} catch (err) {
-		logger.error('[API] Failed to refresh movie metadata', err instanceof Error ? err : undefined, {
-			id,
-			tmdbId: movieData.tmdbId
-		});
+		logger.error(
+			{
+				err: err instanceof Error ? err : undefined,
+				...{
+					id,
+					tmdbId: movieData.tmdbId
+				}
+			},
+			'[API] Failed to refresh movie metadata'
+		);
 
 		error(500, err instanceof Error ? err.message : 'Failed to refresh movie metadata');
 	} finally {

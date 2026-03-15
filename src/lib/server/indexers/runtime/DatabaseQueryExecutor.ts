@@ -65,7 +65,7 @@ export class DatabaseQueryExecutor {
 	async execute(criteria: SearchCriteria, context: DatabaseQueryContext): Promise<ReleaseResult[]> {
 		const searchType = criteria.searchType;
 
-		this.log.debug('Executing database query', { searchType, criteria });
+		this.log.debug({ searchType, criteria }, 'Executing database query');
 
 		// Set up template context
 		this.setupTemplateContext(criteria, context);
@@ -142,7 +142,7 @@ export class DatabaseQueryExecutor {
 		// Get the table reference
 		const tableRef = this.getTableRef(queryDef.table);
 		if (!tableRef) {
-			this.log.error('Unknown table in query definition', { table: queryDef.table });
+			this.log.error({ table: queryDef.table }, 'Unknown table in query definition');
 			return [];
 		}
 
@@ -161,7 +161,7 @@ export class DatabaseQueryExecutor {
 				results = await db.select().from(tableRef);
 			}
 		} catch (error) {
-			this.log.error('Database query failed', { error, queryDef });
+			this.log.error({ error, queryDef }, 'Database query failed');
 			return [];
 		}
 
@@ -195,14 +195,17 @@ export class DatabaseQueryExecutor {
 			conditions.push(eq(movies.monitored, true));
 		}
 
-		this.log.info('[DatabaseQueryExecutor] Executing movie query', {
-			indexer: context.indexerName,
-			tmdbId: criteria.tmdbId,
-			imdbId: criteria.imdbId,
-			query: criteria.query,
-			searchSource: criteria.searchSource,
-			conditionsCount: conditions.length
-		});
+		this.log.info(
+			{
+				indexer: context.indexerName,
+				tmdbId: criteria.tmdbId,
+				imdbId: criteria.imdbId,
+				query: criteria.query,
+				searchSource: criteria.searchSource,
+				conditionsCount: conditions.length
+			},
+			'[DatabaseQueryExecutor] Executing movie query'
+		);
 
 		let results: (typeof movies.$inferSelect)[];
 		if (conditions.length > 0) {
@@ -217,11 +220,14 @@ export class DatabaseQueryExecutor {
 			results = await db.select().from(movies).limit(100);
 		}
 
-		this.log.info('[DatabaseQueryExecutor] Movie query results', {
-			indexer: context.indexerName,
-			resultsCount: results.length,
-			movies: results.slice(0, 5).map((m) => ({ id: m.id, title: m.title, tmdbId: m.tmdbId }))
-		});
+		this.log.info(
+			{
+				indexer: context.indexerName,
+				resultsCount: results.length,
+				movies: results.slice(0, 5).map((m) => ({ id: m.id, title: m.title, tmdbId: m.tmdbId }))
+			},
+			'[DatabaseQueryExecutor] Movie query results'
+		);
 
 		const releaseResults: ReleaseResult[] = [];
 
@@ -618,11 +624,14 @@ export class DatabaseQueryExecutor {
 	): ReturnType<typeof eq> | null {
 		// Validate field against column allowlist to prevent SQL injection
 		if (!DatabaseQueryExecutor.ALLOWED_COLUMNS.has(field)) {
-			this.log.warn('Rejected unknown column in database query condition', {
-				field,
-				operator,
-				logCategory: 'indexers'
-			});
+			this.log.warn(
+				{
+					field,
+					operator,
+					logDomain: 'indexers'
+				},
+				'Rejected unknown column in database query condition'
+			);
 			return null;
 		}
 		const sqlField = sql.raw(field);
@@ -697,7 +706,7 @@ export class DatabaseQueryExecutor {
 					}
 				});
 			} catch (error) {
-				this.log.warn('Failed to map result', { error, row });
+				this.log.warn({ error, row }, 'Failed to map result');
 			}
 		}
 

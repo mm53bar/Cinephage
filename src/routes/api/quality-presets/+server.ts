@@ -14,10 +14,13 @@ const DEPRECATION_MESSAGE =
 	'Quality presets API has been removed. Use /api/scoring-profiles instead.';
 
 function logDeprecation(method: string) {
-	logger.warn('[REMOVED] Quality presets API accessed', {
-		method,
-		message: DEPRECATION_MESSAGE
-	});
+	logger.warn(
+		{
+			method,
+			message: DEPRECATION_MESSAGE
+		},
+		'[REMOVED] Quality presets API accessed'
+	);
 }
 
 /**

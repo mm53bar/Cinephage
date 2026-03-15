@@ -8,8 +8,10 @@
 import { db } from '$lib/server/db';
 import { livetvAccounts, livetvChannels, livetvCategories } from '$lib/server/db/schema';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { randomUUID } from 'crypto';
+
+const logger = createChildLogger({ logDomain: 'livetv' as const });
 import { XMLParser } from 'fast-xml-parser';
 import { gunzip } from 'zlib';
 import { promisify } from 'util';
@@ -220,10 +222,13 @@ export class M3uProvider implements LiveTvProvider {
 					.where(eq(livetvAccounts.id, accountId));
 
 				if (derivedEpgUrl) {
-					logger.info('[M3uProvider] Derived EPG URL from playlist header', {
-						accountId,
-						epgUrl: derivedEpgUrl
-					});
+					logger.info(
+						{
+							accountId,
+							epgUrl: derivedEpgUrl
+						},
+						'[M3uProvider] Derived EPG URL from playlist header'
+					);
 				}
 			}
 
@@ -376,16 +381,19 @@ export class M3uProvider implements LiveTvProvider {
 
 			const duration = Date.now() - startTime;
 
-			logger.info('[M3uProvider] Channel sync completed', {
-				accountId,
-				categoriesAdded,
-				categoriesUpdated,
-				channelsAdded,
-				channelsUpdated,
-				channelsRemoved,
-				duplicateTvgIdCount,
-				duration
-			});
+			logger.info(
+				{
+					accountId,
+					categoriesAdded,
+					categoriesUpdated,
+					channelsAdded,
+					channelsUpdated,
+					channelsRemoved,
+					duplicateTvgIdCount,
+					duration
+				},
+				'[M3uProvider] Channel sync completed'
+			);
 
 			return {
 				success: true,
@@ -400,7 +408,7 @@ export class M3uProvider implements LiveTvProvider {
 			const message = error instanceof Error ? error.message : String(error);
 			const duration = Date.now() - startTime;
 
-			logger.error('[M3uProvider] Channel sync failed', { accountId, error: message });
+			logger.error({ accountId, err: error }, '[M3uProvider] Channel sync failed');
 
 			await db
 				.update(livetvAccounts)
@@ -534,10 +542,13 @@ export class M3uProvider implements LiveTvProvider {
 						})
 						.where(eq(livetvAccounts.id, account.id));
 
-					logger.info('[M3uProvider] Derived EPG URL from playlist for EPG sync', {
-						accountId: account.id,
-						epgUrl
-					});
+					logger.info(
+						{
+							accountId: account.id,
+							epgUrl
+						},
+						'[M3uProvider] Derived EPG URL from playlist for EPG sync'
+					);
 				}
 			}
 
@@ -547,7 +558,7 @@ export class M3uProvider implements LiveTvProvider {
 			}
 
 			// Fetch XMLTV data
-			logger.info('[M3uProvider] Fetching XMLTV EPG', { epgUrl });
+			logger.info({ epgUrl }, '[M3uProvider] Fetching XMLTV EPG');
 
 			const response = await fetch(epgUrl, {
 				headers: {
@@ -691,16 +702,18 @@ export class M3uProvider implements LiveTvProvider {
 				}
 			}
 
-			logger.info('[M3uProvider] XMLTV EPG parsed successfully', {
-				accountId: account.id,
-				programsFound: programs.length,
-				channelsMatched: new Set(programs.map((p) => p.channelId)).size
-			});
+			logger.info(
+				{
+					accountId: account.id,
+					programsFound: programs.length,
+					channelsMatched: new Set(programs.map((p) => p.channelId)).size
+				},
+				'[M3uProvider] XMLTV EPG parsed successfully'
+			);
 
 			return programs;
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			logger.error('[M3uProvider] EPG fetch failed', { accountId: account.id, error: message });
+			logger.error({ accountId: account.id, err: error }, '[M3uProvider] EPG fetch failed');
 			return [];
 		}
 	}
@@ -784,18 +797,21 @@ export class M3uProvider implements LiveTvProvider {
 		if (hasGzipMagic) {
 			try {
 				xmlBuffer = await gunzipAsync(xmlBuffer);
-				logger.debug('[M3uProvider] Decompressed gzip XMLTV payload', {
-					epgUrl,
-					compressedBytes: raw.length,
-					uncompressedBytes: xmlBuffer.length
-				});
+				logger.debug(
+					{
+						epgUrl,
+						compressedBytes: raw.length,
+						uncompressedBytes: xmlBuffer.length
+					},
+					'[M3uProvider] Decompressed gzip XMLTV payload'
+				);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				throw new Error(`Failed to decompress XMLTV gzip payload: ${message}`, { cause: error });
 			}
 		} else if (hasGzipMetadata) {
 			// Some servers auto-decompress despite .gz URLs/content-types.
-			logger.debug('[M3uProvider] XMLTV marked as gzip but response was plain text', { epgUrl });
+			logger.debug({ epgUrl }, '[M3uProvider] XMLTV marked as gzip but response was plain text');
 		}
 
 		let xmlContent = xmlBuffer.toString('utf-8');

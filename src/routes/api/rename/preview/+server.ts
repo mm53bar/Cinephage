@@ -56,9 +56,12 @@ export const GET: RequestHandler = async (event) => {
 
 		return json(result);
 	} catch (error) {
-		logger.error('[RenamePreview API] Failed to generate preview', {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'[RenamePreview API] Failed to generate preview'
+		);
 
 		return json(
 			{

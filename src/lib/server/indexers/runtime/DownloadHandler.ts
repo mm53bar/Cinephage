@@ -92,16 +92,19 @@ export class DownloadHandler {
 
 		// Extract download variables if defined
 		if (download.downloadVariables?.length) {
-			this.log.debug('Starting download variable extraction', {
-				downloadVariablesCount: download.downloadVariables.length,
-				downloadVariablesFrom: download.downloadVariablesFrom,
-				releaseDetailsUrl: context.releaseDetailsUrl,
-				releaseGuid: context.releaseGuid
-			});
+			this.log.debug(
+				{
+					downloadVariablesCount: download.downloadVariables.length,
+					downloadVariablesFrom: download.downloadVariablesFrom,
+					releaseDetailsUrl: context.releaseDetailsUrl,
+					releaseGuid: context.releaseGuid
+				},
+				'Starting download variable extraction'
+			);
 			const extractedVariables = await this.extractDownloadVariables(download, context, headers);
 			for (const [name, value] of Object.entries(extractedVariables)) {
 				this.templateEngine.setVariable(`.Variables.${name}`, value);
-				this.log.debug('Set download variable', { name, value: value?.substring(0, 50) });
+				this.log.debug({ name, value: value?.substring(0, 50) }, 'Set download variable');
 			}
 		}
 
@@ -368,10 +371,13 @@ export class DownloadHandler {
 				if (selector.selector && !selector.attribute) {
 					const expanded = this.templateEngine.expand(selector.selector);
 					if (expanded && expanded !== selector.selector && this.isUrlLikeString(expanded)) {
-						this.log.debug('Selector expanded to URL, using directly as download link', {
-							original: selector.selector,
-							expanded: expanded.substring(0, 80)
-						});
+						this.log.debug(
+							{
+								original: selector.selector,
+								expanded: expanded.substring(0, 80)
+							},
+							'Selector expanded to URL, using directly as download link'
+						);
 						const resolvedUrl = this.resolveUrl(expanded, downloadUrl);
 
 						if (resolvedUrl.startsWith('magnet:')) {
@@ -619,18 +625,24 @@ export class DownloadHandler {
 		}
 
 		if (!fetchUrl) {
-			this.log.debug('No URL available for download variable extraction', {
-				fetchFrom,
-				hasDetailsUrl: !!context.releaseDetailsUrl
-			});
+			this.log.debug(
+				{
+					fetchFrom,
+					hasDetailsUrl: !!context.releaseDetailsUrl
+				},
+				'No URL available for download variable extraction'
+			);
 			return variables;
 		}
 
 		try {
-			this.log.debug('Fetching page for download variable extraction', {
-				url: fetchUrl.substring(0, 80),
-				headers: Object.keys(headers)
-			});
+			this.log.debug(
+				{
+					url: fetchUrl.substring(0, 80),
+					headers: Object.keys(headers)
+				},
+				'Fetching page for download variable extraction'
+			);
 
 			const cfResponse = await cloudflareFetch(fetchUrl, {
 				method: 'GET',
@@ -639,11 +651,14 @@ export class DownloadHandler {
 				encoding: context.encoding
 			});
 
-			this.log.debug('Download variable extraction response', {
-				status: cfResponse.status,
-				bodyLength: cfResponse.body.length,
-				bodyPreview: cfResponse.body.substring(0, 100)
-			});
+			this.log.debug(
+				{
+					status: cfResponse.status,
+					bodyLength: cfResponse.body.length,
+					bodyPreview: cfResponse.body.substring(0, 100)
+				},
+				'Download variable extraction response'
+			);
 
 			const $ = cheerio.load(cfResponse.body);
 
@@ -658,20 +673,26 @@ export class DownloadHandler {
 					}
 
 					variables[variable.name] = value;
-					this.log.debug('Extracted download variable', {
-						name: variable.name,
-						value: value.substring(0, 50)
-					});
+					this.log.debug(
+						{
+							name: variable.name,
+							value: value.substring(0, 50)
+						},
+						'Extracted download variable'
+					);
 				} else {
-					this.log.warn('Download variable selector did not match', {
-						name: variable.name,
-						selector: variable.selector
-					});
+					this.log.warn(
+						{
+							name: variable.name,
+							selector: variable.selector
+						},
+						'Download variable selector did not match'
+					);
 				}
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			this.log.error('Failed to extract download variables', { error: message });
+			this.log.error({ error: message }, 'Failed to extract download variables');
 		}
 
 		return variables;

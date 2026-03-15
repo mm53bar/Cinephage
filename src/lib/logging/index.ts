@@ -104,23 +104,41 @@ const SENSITIVE_OBJECT_KEYS = [
 	'credential'
 ];
 
+function getRuntimeEnv(key: string): string | undefined {
+	const viteEnv = (import.meta.env as Record<string, unknown> | undefined)?.[key];
+	if (typeof viteEnv === 'string') {
+		return viteEnv;
+	}
+
+	const prefixedViteEnv = (import.meta.env as Record<string, unknown> | undefined)?.[`VITE_${key}`];
+	if (typeof prefixedViteEnv === 'string') {
+		return prefixedViteEnv;
+	}
+
+	if (typeof process !== 'undefined') {
+		return process.env?.[key];
+	}
+
+	return undefined;
+}
+
 function isDev(): boolean {
 	try {
-		return import.meta.env?.DEV ?? process.env.NODE_ENV === 'development';
+		return import.meta.env?.DEV ?? getRuntimeEnv('NODE_ENV') === 'development';
 	} catch {
 		return false;
 	}
 }
 
 function shouldIncludeErrorStack(): boolean {
-	const configured = process.env.LOG_INCLUDE_STACK;
+	const configured = getRuntimeEnv('LOG_INCLUDE_STACK');
 	if (configured === 'true') return true;
 	if (configured === 'false') return false;
 	return isDev();
 }
 
 function isRedactionBypassed(): boolean {
-	return process.env.LOG_SENSITIVE === 'true';
+	return getRuntimeEnv('LOG_SENSITIVE') === 'true';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -276,11 +294,11 @@ function sanitizeError(error: Error): Record<string, unknown> {
 
 function getBasePinoOptions(): LoggerOptions {
 	return {
-		level: process.env.LOG_LEVEL || (isDev() ? 'debug' : 'info'),
+		level: getRuntimeEnv('LOG_LEVEL') || (isDev() ? 'debug' : 'info'),
 		base: {
 			service: 'cinephage',
-			env: process.env.NODE_ENV || 'development',
-			version: process.env.npm_package_version || '0.0.0'
+			env: getRuntimeEnv('NODE_ENV') || 'development',
+			version: getRuntimeEnv('npm_package_version') || '0.0.0'
 		},
 		timestamp: pino.stdTimeFunctions.isoTime,
 		messageKey: 'msg',

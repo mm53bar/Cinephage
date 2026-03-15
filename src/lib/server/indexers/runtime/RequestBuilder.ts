@@ -692,6 +692,24 @@ export class RequestBuilder {
 		}
 
 		try {
+			// Newznab endpoints are commonly hosted under a sub-path (e.g., /newznab).
+			// Keep that base path when definition paths are absolute like "/api".
+			if (this.definition.id === 'newznab' && path.startsWith('/')) {
+				const base = new URL(this.baseUrl);
+				const normalizedBasePath = base.pathname.replace(/\/+$/, '');
+				const normalizedPath = path.replace(/\/+$/, '');
+
+				if (normalizedBasePath && normalizedBasePath !== '/') {
+					// If base URL already includes the target endpoint (e.g., .../api), keep it unchanged.
+					if (normalizedPath && normalizedBasePath.endsWith(normalizedPath)) {
+						return base.toString();
+					}
+
+					base.pathname = `${normalizedBasePath}${path}`;
+					return base.toString();
+				}
+			}
+
 			return new URL(path, this.baseUrl).toString();
 		} catch {
 			return this.baseUrl + (path.startsWith('/') ? path : '/' + path);

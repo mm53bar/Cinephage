@@ -951,13 +951,27 @@ export class UnifiedIndexer implements IIndexer {
 			return redactedUrl;
 		}
 
-		// For newznab-style indexers, the URL format is:
-		// {baseUrl}/api?t=get&id={guid}&apikey={apikey}
-		// Extract the ID and reconstruct
+		// Prefer in-place token replacement to preserve exact endpoint pathing.
+		const replacedUrl = redactedUrl
+			.replace(/\[REDACTED\]/g, apikey)
+			.replace(/%5BREDACTED%5D/gi, encodeURIComponent(apikey));
+		if (replacedUrl !== redactedUrl) {
+			this.log.debug('Replaced [REDACTED] in URL with API key');
+			return replacedUrl;
+		}
+
+		// Fallback: reconstruct Newznab get URL from ID while preserving configured base path.
 		const idMatch = redactedUrl.match(/[?&]id=([^&]+)/);
 		if (idMatch) {
-			const baseUrl = this.requestBuilder.getBaseUrl();
-			const reconstructed = `${baseUrl}/api?t=get&id=${idMatch[1]}&apikey=${apikey}`;
+			const baseUrl = new URL(this.requestBuilder.getBaseUrl());
+			const normalizedPath = baseUrl.pathname.replace(/\/+$/, '');
+			if (!normalizedPath.endsWith('/api')) {
+				baseUrl.pathname = normalizedPath ? `${normalizedPath}/api` : '/api';
+			}
+			baseUrl.searchParams.set('t', 'get');
+			baseUrl.searchParams.set('id', idMatch[1]);
+			baseUrl.searchParams.set('apikey', apikey);
+			const reconstructed = baseUrl.toString();
 			this.log.debug(
 				{
 					original: redactedUrl.substring(0, 50) + '...',
@@ -968,12 +982,7 @@ export class UnifiedIndexer implements IIndexer {
 			return reconstructed;
 		}
 
-		// Fallback: try to replace [REDACTED] or %5BREDACTED%5D with actual apikey
-		const reconstructed = redactedUrl
-			.replace(/\[REDACTED\]/g, apikey)
-			.replace(/%5BREDACTED%5D/gi, apikey);
-		this.log.debug('Replaced [REDACTED] in URL with API key');
-		return reconstructed;
+		return redactedUrl;
 	}
 
 	/**

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 	import {
 		ChevronDown,
 		ChevronRight,
@@ -18,7 +18,6 @@
 		CapturedLogEntry,
 		CapturedLogLevel
 	} from '$lib/logging/log-capture';
-	import { CAPTURED_LOG_LEVELS } from '$lib/logging/log-capture';
 	import { createDynamicSSE } from '$lib/sse';
 	import { toasts } from '$lib/stores/toast.svelte';
 
@@ -47,14 +46,22 @@
 
 	// ── View state ──────────────────────────────────────────────
 	let paused = $state(false);
+	let seededEntriesFromData = false;
+	const initialSeedEntries = $derived.by(() => structuredClone(data.initialEntries).slice(-200));
 	// Seed entries from SSR data so the UI has content immediately.
 	// The SSE `logs:seed` event will replace these once the stream connects.
-	let entries = $state<CapturedLogEntry[]>(structuredClone(data.initialEntries).slice(-200));
+	let entries = $state<CapturedLogEntry[]>([]);
 	let pendingEntries = $state<CapturedLogEntry[]>([]);
 	let expandedEntries = new SvelteSet<string>();
 	let bufferedById = new SvelteMap<string, CapturedLogEntry>();
 	let autoScroll = $state(true);
 	let terminalEl: HTMLDivElement | undefined = $state();
+
+	$effect(() => {
+		if (seededEntriesFromData) return;
+		entries = initialSeedEntries;
+		seededEntriesFromData = true;
+	});
 
 	// ── Debounced search ────────────────────────────────────────
 	$effect(() => {
@@ -81,21 +88,7 @@
 	}
 
 	function allLevelsActive(): boolean {
-		return CAPTURED_LOG_LEVELS.every((l) => activeLevels.has(l));
-	}
-
-	function toggleAllLevels() {
-		if (allLevelsActive()) {
-			// Reset to default (info, warn, error)
-			activeLevels.clear();
-			activeLevels.add('info');
-			activeLevels.add('warn');
-			activeLevels.add('error');
-		} else {
-			for (const l of CAPTURED_LOG_LEVELS) {
-				activeLevels.add(l);
-			}
-		}
+		return data.availableLevels.every((l) => activeLevels.has(l));
 	}
 
 	// ── Filter key for SSE reconnection ─────────────────────────
@@ -118,7 +111,7 @@
 
 	// ── SSE URL construction ────────────────────────────────────
 	let liveUrl = $derived.by(() => {
-		const params = new URLSearchParams();
+		const params = new SvelteURLSearchParams();
 		// Send levels as comma-separated list
 		if (!allLevelsActive() && activeLevels.size > 0) {
 			params.set('levels', [...activeLevels].join(','));
@@ -134,7 +127,7 @@
 	});
 
 	let downloadUrl = $derived.by(() => {
-		const params = new URLSearchParams();
+		const params = new SvelteURLSearchParams();
 		if (!allLevelsActive() && activeLevels.size > 0) {
 			params.set('levels', [...activeLevels].join(','));
 		}
@@ -151,7 +144,7 @@
 
 	// ── Dedup and trim ──────────────────────────────────────────
 	function dedupeAndTrim(items: CapturedLogEntry[], limit: number): CapturedLogEntry[] {
-		const seen = new Set<string>();
+		const seen = new SvelteSet<string>();
 		const result: CapturedLogEntry[] = [];
 
 		for (let i = items.length - 1; i >= 0; i -= 1) {
@@ -237,9 +230,7 @@
 		`${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`
 	);
 	const pendingCountLabel = $derived(
-		pendingEntries.length > 0
-			? `${pendingEntries.length} buffered`
-			: ''
+		pendingEntries.length > 0 ? `${pendingEntries.length} buffered` : ''
 	);
 
 	// ── Actions ─────────────────────────────────────────────────
@@ -328,12 +319,12 @@
 	function hasDetails(entry: CapturedLogEntry): boolean {
 		return Boolean(
 			entry.method ||
-				entry.path ||
-				entry.requestId ||
-				entry.supportId ||
-				entry.correlationId ||
-				entry.data ||
-				entry.err
+			entry.path ||
+			entry.requestId ||
+			entry.supportId ||
+			entry.correlationId ||
+			entry.data ||
+			entry.err
 		);
 	}
 
@@ -395,19 +386,19 @@
 		</div>
 		<div class="flex flex-wrap items-center gap-2">
 			{#if sse.isConnected}
-				<span class="badge badge-success gap-1.5 text-xs">
+				<span class="badge gap-1.5 text-xs badge-success">
 					<Wifi class="h-3 w-3" />
 					Live
 				</span>
 			{:else}
-				<span class="badge badge-warning gap-1.5 text-xs">
+				<span class="badge gap-1.5 text-xs badge-warning">
 					<WifiOff class="h-3 w-3" />
 					Connecting
 				</span>
 			{/if}
 			<span class="badge badge-ghost text-xs">{entryCountLabel}</span>
 			{#if paused && pendingCountLabel}
-				<span class="badge badge-warning badge-outline text-xs">{pendingCountLabel}</span>
+				<span class="badge badge-outline text-xs badge-warning">{pendingCountLabel}</span>
 			{/if}
 		</div>
 	</div>
@@ -419,9 +410,12 @@
 			<div class="flex flex-wrap items-center gap-2">
 				<!-- Level toggle badges -->
 				<div class="flex items-center gap-1">
-					{#each CAPTURED_LOG_LEVELS as level (level)}
+					{#each data.availableLevels as level (level)}
 						<button
-							class="cursor-pointer rounded border px-2.5 py-1 font-mono text-xs font-semibold uppercase tracking-wide transition-all select-none {levelToggleClass(level, activeLevels.has(level))}"
+							class="cursor-pointer rounded border px-2.5 py-1 font-mono text-xs font-semibold tracking-wide uppercase transition-all select-none {levelToggleClass(
+								level,
+								activeLevels.has(level)
+							)}"
 							onclick={() => toggleLevel(level)}
 							title="Toggle {level} logs"
 						>
@@ -434,7 +428,7 @@
 
 				<!-- Domain select -->
 				<select
-					class="select select-bordered select-sm bg-base-100 text-xs"
+					class="select-bordered select bg-base-100 select-sm text-xs"
 					bind:value={selectedDomain}
 				>
 					<option value="all">All domains</option>
@@ -446,7 +440,7 @@
 				<div class="hidden h-5 w-px bg-base-300 sm:block"></div>
 
 				<!-- Search -->
-				<label class="input input-bordered input-sm flex items-center gap-2 bg-base-100">
+				<label class="input-bordered input input-sm flex items-center gap-2 bg-base-100">
 					<Search class="h-3.5 w-3.5 text-base-content/40" />
 					<input
 						type="text"
@@ -460,7 +454,7 @@
 			<!-- Right side: Actions -->
 			<div class="flex flex-wrap items-center gap-1.5">
 				<button
-					class="btn btn-ghost btn-sm text-xs"
+					class="btn text-xs btn-ghost btn-sm"
 					onclick={togglePause}
 					title={paused ? 'Resume stream' : 'Pause stream'}
 				>
@@ -472,12 +466,12 @@
 						Pause
 					{/if}
 				</button>
-				<button class="btn btn-ghost btn-sm text-xs" onclick={clearView} title="Clear view">
+				<button class="btn text-xs btn-ghost btn-sm" onclick={clearView} title="Clear view">
 					<RotateCcw class="h-3.5 w-3.5" />
 					Clear
 				</button>
 				<button
-					class="btn btn-ghost btn-sm text-xs"
+					class="btn text-xs btn-ghost btn-sm"
 					onclick={downloadLogs}
 					title="Download logs as JSONL"
 				>
@@ -495,7 +489,7 @@
 				<span class="text-warning">
 					{pendingEntries.length} new {pendingEntries.length === 1 ? 'entry' : 'entries'} buffered
 				</span>
-				<button class="btn btn-warning btn-xs" onclick={togglePause}>
+				<button class="btn btn-xs btn-warning" onclick={togglePause}>
 					<Play class="h-3 w-3" />
 					Resume
 				</button>
@@ -513,7 +507,7 @@
 			{#if entries.length === 0 && !sse.isConnected}
 				<!-- Loading state: SSE still connecting/reconnecting -->
 				<div class="flex items-center gap-3 p-6 font-mono text-sm text-neutral-content/50">
-					<span class="loading loading-dots loading-sm"></span>
+					<span class="loading loading-sm loading-dots"></span>
 					<span>Connecting to log stream...</span>
 				</div>
 			{:else if entries.length === 0}
@@ -545,7 +539,7 @@
 								onclick={() => details && toggleExpanded(entry.id)}
 							>
 								<!-- Expand indicator -->
-								<span class="mr-1.5 mt-0.5 w-3 shrink-0">
+								<span class="mt-0.5 mr-1.5 w-3 shrink-0">
 									{#if details}
 										{#if expanded}
 											<ChevronDown class="h-3 w-3 text-neutral-content/30" />
@@ -563,8 +557,10 @@
 								>
 
 								<!-- Level -->
-								<span class="mr-3 w-12 shrink-0 text-right font-bold uppercase {levelColor(entry.level)}"
-									>{entry.level.padStart(5)}</span
+								<span
+									class="mr-3 w-12 shrink-0 text-right font-bold uppercase {levelColor(
+										entry.level
+									)}">{entry.level.padStart(5)}</span
 								>
 
 								<!-- Source -->
@@ -575,20 +571,23 @@
 								{/if}
 
 								<!-- Message -->
-								<span class="min-w-0 flex-1 break-words text-neutral-content/85">{entry.msg}</span>
+								<span class="min-w-0 flex-1 wrap-break-word text-neutral-content/85"
+									>{entry.msg}</span
+								>
 							</button>
 
 							<!-- Expanded details -->
 							{#if details && expanded}
-								<div class="border-t border-neutral-content/5 bg-neutral-content/[0.03] px-3 py-2">
-									<div class="ml-[4.5rem] xl:ml-[7.5rem]">
+								<div class="border-t border-neutral-content/5 bg-neutral-content/3 px-3 py-2">
+									<div class="ml-18 xl:ml-30">
 										<!-- Quick info badges -->
 										<div class="mb-2 flex flex-wrap gap-1.5">
 											{#if entry.method && entry.path}
 												<span
 													class="rounded bg-neutral-content/10 px-1.5 py-0.5 font-mono text-xs text-neutral-content/60"
 												>
-													{entry.method} {entry.path}
+													{entry.method}
+													{entry.path}
 												</span>
 											{/if}
 											{#if entry.requestId}
@@ -608,7 +607,9 @@
 										</div>
 										<!-- JSON details -->
 										<pre
-											class="overflow-auto rounded bg-neutral-content/[0.06] p-2.5 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words text-neutral-content/60">{formatDetails(entry)}</pre>
+											class="overflow-auto rounded bg-neutral-content/6 p-2.5 font-mono text-xs leading-relaxed wrap-break-word whitespace-pre-wrap text-neutral-content/60">{formatDetails(
+												entry
+											)}</pre>
 									</div>
 								</div>
 							{/if}
@@ -621,7 +622,7 @@
 		<!-- Scroll to bottom button -->
 		{#if !autoScroll}
 			<button
-				class="btn btn-circle btn-sm btn-neutral absolute right-4 bottom-4 shadow-lg"
+				class="btn absolute right-4 bottom-4 btn-circle shadow-lg btn-sm btn-neutral"
 				onclick={scrollToBottom}
 				title="Scroll to bottom"
 			>

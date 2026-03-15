@@ -204,3 +204,73 @@ describe('RequestBuilder supported param filtering', () => {
 		expect(getParam(requests[0].url, 'q')).toBe('Example Movie');
 	});
 });
+
+describe('RequestBuilder newznab base path handling', () => {
+	function createNewznabSearchBuilder(baseUrl: string): RequestBuilder {
+		const definition = {
+			id: 'newznab',
+			name: 'Newznab',
+			type: 'private',
+			protocol: 'usenet',
+			links: [baseUrl],
+			caps: {
+				categories: {
+					'2000': 'Movies'
+				},
+				categorymappings: [{ id: '2000', cat: 'Movies', default: true }]
+			},
+			search: {
+				paths: [
+					{
+						path: '/api',
+						method: 'get',
+						inputs: {
+							t: 'search',
+							q: '{{ .Keywords }}'
+						}
+					}
+				],
+				response: { type: 'xml' },
+				rows: { selector: 'rss channel item' },
+				fields: {
+					title: { selector: 'title' }
+				}
+			}
+		} as any;
+
+		return new RequestBuilder(definition, createTemplateEngine(), createFilterEngine());
+	}
+
+	it('preserves configured base subpath for search requests', () => {
+		const builder = createNewznabSearchBuilder('http://10.0.0.149:8383/newznab');
+		const criteria: SearchCriteria = {
+			searchType: 'basic',
+			query: 'test query'
+		};
+
+		const requests = builder.buildSearchRequests(criteria);
+		expect(requests).toHaveLength(1);
+
+		const requestUrl = new URL(requests[0].url);
+		expect(requestUrl.origin).toBe('http://10.0.0.149:8383');
+		expect(requestUrl.pathname).toBe('/newznab/api');
+		expect(requestUrl.searchParams.get('t')).toBe('search');
+		expect(requestUrl.searchParams.get('q')).toBe('test query');
+	});
+
+	it('does not duplicate /api when base URL already ends with /api', () => {
+		const builder = createNewznabSearchBuilder('http://10.0.0.149:8383/newznab/api');
+		const criteria: SearchCriteria = {
+			searchType: 'basic',
+			query: 'test query'
+		};
+
+		const requests = builder.buildSearchRequests(criteria);
+		expect(requests).toHaveLength(1);
+
+		const requestUrl = new URL(requests[0].url);
+		expect(requestUrl.pathname).toBe('/newznab/api');
+		expect(requestUrl.searchParams.get('t')).toBe('search');
+		expect(requestUrl.searchParams.get('q')).toBe('test query');
+	});
+});

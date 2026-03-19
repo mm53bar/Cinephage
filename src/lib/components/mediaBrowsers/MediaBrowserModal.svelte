@@ -205,9 +205,7 @@
 					<div class="card-body p-4">
 						<div class="flex-1">
 							<h3 class="font-semibold">Plex</h3>
-							<p class="mt-1 text-sm text-base-content/60">
-								Media server with path refresh integration
-							</p>
+							<p class="mt-1 text-sm text-base-content/60">Personal media server</p>
 						</div>
 					</div>
 				</button>

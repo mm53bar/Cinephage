@@ -1628,9 +1628,8 @@ export class ManualImportService {
 	private normalizeTitle(title: string): string {
 		return title
 			.toLowerCase()
-			.replace(/[^a-z0-9]/g, '')
-			.replace(/^the/, '')
-			.replace(/^a/, '');
+			.replace(/^(the|an?)\s+/i, '') // Remove leading articles before stripping spaces
+			.replace(/[^a-z0-9]/g, '');
 	}
 }
 

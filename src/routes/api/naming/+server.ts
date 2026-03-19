@@ -6,6 +6,7 @@ import { DEFAULT_NAMING_CONFIG } from '$lib/server/library/naming/NamingService'
 import { namingSettingsUpdateSchema } from '$lib/validation/schemas';
 import { logger } from '$lib/logging';
 import { requireAdmin } from '$lib/server/auth/authorization.js';
+import { resetRenamePreviewService } from '$lib/server/library/naming/RenamePreviewService.js';
 
 /**
  * GET /api/naming
@@ -52,6 +53,9 @@ export const PUT: RequestHandler = async (event) => {
 			presetSelection: normalizeNamingPresetSelection(validation.data.presetSelection)
 		});
 
+		// Invalidate cached NamingService so subsequent operations use the new config
+		resetRenamePreviewService();
+
 		return json({
 			success: true,
 			config: updatedSettings.config,
@@ -74,6 +78,9 @@ export const DELETE: RequestHandler = async (event) => {
 	try {
 		const defaultConfig = await namingSettingsService.resetToDefaults();
 		const presetSelection = await namingSettingsService.getPresetSelection();
+
+		// Invalidate cached NamingService so subsequent operations use the default config
+		resetRenamePreviewService();
 
 		return json({
 			success: true,

@@ -228,7 +228,11 @@ function sanitizeLogValue(value: unknown, seen: WeakSet<object>): unknown {
 	}
 
 	if (value instanceof Error) {
-		return stdSerializers.err(toError(value));
+		// pino's stdSerializers.err() returns an object with a non-POJO prototype
+		// and a Symbol key holding the raw Error. Re-enter sanitizeLogValue so
+		// the generic object path (Object.entries loop) converts it to a clean POJO.
+		const serialized = stdSerializers.err(toError(value));
+		return sanitizeLogValue(serialized, seen);
 	}
 
 	if (Array.isArray(value)) {

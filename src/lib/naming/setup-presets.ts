@@ -157,7 +157,6 @@ export const NAMING_STYLE_PRESETS: NamingStylePreset[] = [
 		description: 'Balanced naming with quality, media details, and release group information.',
 		config: {
 			movieFileFormat: RECOMMENDED_MOVIE_FILE,
-			seasonFolderFormat: 'Season {Season:00}',
 			episodeFileFormat: RECOMMENDED_EPISODE_FILE,
 			dailyEpisodeFormat: RECOMMENDED_DAILY_FILE,
 			animeEpisodeFormat: RECOMMENDED_ANIME_FILE,
@@ -172,7 +171,6 @@ export const NAMING_STYLE_PRESETS: NamingStylePreset[] = [
 		description: 'Shorter names that keep the essentials without overloading the filename.',
 		config: {
 			movieFileFormat: COMPACT_MOVIE_FILE,
-			seasonFolderFormat: 'Season {Season:00}',
 			episodeFileFormat: COMPACT_EPISODE_FILE,
 			dailyEpisodeFormat: COMPACT_DAILY_FILE,
 			animeEpisodeFormat: COMPACT_ANIME_FILE,
@@ -187,7 +185,6 @@ export const NAMING_STYLE_PRESETS: NamingStylePreset[] = [
 		description: 'Dot-separated naming for users who prefer a scene-like release look.',
 		config: {
 			movieFileFormat: SCENE_MOVIE_FILE,
-			seasonFolderFormat: 'Season {Season:00}',
 			episodeFileFormat: SCENE_EPISODE_FILE,
 			dailyEpisodeFormat: SCENE_DAILY_FILE,
 			animeEpisodeFormat: SCENE_ANIME_FILE,
@@ -202,7 +199,6 @@ export const NAMING_STYLE_PRESETS: NamingStylePreset[] = [
 		description: 'Cleaner naming that keeps titles front and center with minimal release metadata.',
 		config: {
 			movieFileFormat: ORIGINAL_MOVIE_FILE,
-			seasonFolderFormat: 'Season {Season:00}',
 			episodeFileFormat: ORIGINAL_EPISODE_FILE,
 			dailyEpisodeFormat: ORIGINAL_DAILY_FILE,
 			animeEpisodeFormat: ORIGINAL_ANIME_FILE,
@@ -217,7 +213,6 @@ export const NAMING_STYLE_PRESETS: NamingStylePreset[] = [
 		description: 'Preserves absolute numbering and richer anime media detail by default.',
 		config: {
 			movieFileFormat: RECOMMENDED_MOVIE_FILE,
-			seasonFolderFormat: 'Season {Season:00}',
 			episodeFileFormat: RECOMMENDED_EPISODE_FILE,
 			dailyEpisodeFormat: RECOMMENDED_DAILY_FILE,
 			animeEpisodeFormat: RECOMMENDED_ANIME_FILE,

@@ -962,8 +962,8 @@
 	function normalizeTitleForComparison(value: string): string {
 		return value
 			.toLowerCase()
-			.replace(/[^a-z0-9]/g, '')
-			.replace(/^(?:the|an|a)/, '');
+			.replace(/^(?:the|an?)\s+/, '') // Remove leading articles before stripping spaces
+			.replace(/[^a-z0-9]/g, '');
 	}
 
 	function buildTvSeasonSections(items: DetectionGroup[]): TvSeasonSection[] {

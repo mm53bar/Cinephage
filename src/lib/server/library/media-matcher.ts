@@ -196,9 +196,8 @@ export class MediaMatcherService {
 	private normalizeTitle(title: string): string {
 		return title
 			.toLowerCase()
-			.replace(/[^a-z0-9]/g, '') // Remove non-alphanumeric
-			.replace(/^the/, '') // Remove leading "the"
-			.replace(/^a/, ''); // Remove leading "a"
+			.replace(/^(the|an?)\s+/i, '') // Remove leading articles before stripping spaces
+			.replace(/[^a-z0-9]/g, '');
 	}
 
 	private isUniqueTmdbConstraintError(error: unknown, tableName: 'movies' | 'series'): boolean {

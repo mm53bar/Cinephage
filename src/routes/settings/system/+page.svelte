@@ -14,6 +14,8 @@
 	import type { PageData } from './$types';
 	import { copyToClipboard as copyTextToClipboard } from '$lib/utils/clipboard.js';
 	import { toasts } from '$lib/stores/toast.svelte';
+	import { invalidateAll } from '$app/navigation';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
 
 	let { data }: { data: PageData } = $props();
 
@@ -60,14 +62,15 @@
 	// Regenerate loading states
 	let regeneratingMain = $state(false);
 	let regeneratingStreaming = $state(false);
-	let regenerateError = $state('');
+
+	// Confirmation modal state
+	let confirmRegenerateOpen = $state(false);
+	let regenerateTarget = $state<'main' | 'streaming'>('main');
 
 	// Generate loading state
 	let generatingKeys = $state(false);
-	let generateError = $state('');
 
 	async function generateApiKeys() {
-		generateError = '';
 		generatingKeys = true;
 
 		try {
@@ -84,30 +87,33 @@
 			const result = await response.json();
 
 			if (result.success) {
-				// Reload page to show new keys
-				window.location.reload();
+				await invalidateAll();
+				toasts.success('API keys generated successfully');
 			}
 		} catch (err) {
-			generateError = err instanceof Error ? err.message : 'Failed to generate API keys';
+			toasts.error(err instanceof Error ? err.message : 'Failed to generate API keys');
 		} finally {
 			generatingKeys = false;
 		}
 	}
 
+	function promptRegenerate(type: 'main' | 'streaming') {
+		regenerateTarget = type;
+		confirmRegenerateOpen = true;
+	}
+
 	async function regenerateKey(type: 'main' | 'streaming') {
-		regenerateError = '';
+		confirmRegenerateOpen = false;
 		const keyId = type === 'main' ? data.mainApiKey?.id : data.streamingApiKey?.id;
+		const label = type === 'main' ? 'Main' : 'Media Streaming';
 
 		if (!keyId) {
-			regenerateError = `No ${type} API key found to regenerate`;
+			toasts.error(`No ${label} API key found to regenerate`);
 			return;
 		}
 
-		if (type === 'main') {
-			regeneratingMain = true;
-		} else {
-			regeneratingStreaming = true;
-		}
+		if (type === 'main') regeneratingMain = true;
+		else regeneratingStreaming = true;
 
 		try {
 			const response = await fetch(`/api/settings/system/api-keys/${keyId}/regenerate`, {
@@ -117,29 +123,22 @@
 
 			if (!response.ok) {
 				const errorData = await response.json().catch(() => ({ error: 'Failed to regenerate' }));
-				throw new Error(errorData.error || `Failed to regenerate ${type} API key`);
+				throw new Error(errorData.error || `Failed to regenerate ${label} API key`);
 			}
 
 			const result = await response.json();
 
 			if (result.success && result.data?.key) {
-				// Show the new key to the user
-				if (type === 'main') {
-					if (data.mainApiKey) data.mainApiKey.key = result.data.key;
-					showMainKey = true;
-				} else {
-					if (data.streamingApiKey) data.streamingApiKey.key = result.data.key;
-					showStreamingKey = true;
-				}
+				await invalidateAll();
+				if (type === 'main') showMainKey = true;
+				else showStreamingKey = true;
+				toasts.success(`${label} API key regenerated successfully`);
 			}
 		} catch (err) {
-			regenerateError = err instanceof Error ? err.message : `Failed to regenerate ${type} API key`;
+			toasts.error(err instanceof Error ? err.message : `Failed to regenerate ${label} API key`);
 		} finally {
-			if (type === 'main') {
-				regeneratingMain = false;
-			} else {
-				regeneratingStreaming = false;
-			}
+			if (type === 'main') regeneratingMain = false;
+			else regeneratingStreaming = false;
 		}
 	}
 
@@ -208,20 +207,6 @@
 			for full access, or the Media Streaming key for media server integration with Live TV and
 			streaming content.
 		</p>
-
-		{#if regenerateError}
-			<div class="mb-4 alert alert-error">
-				<AlertCircle class="h-5 w-5" />
-				<span>{regenerateError}</span>
-			</div>
-		{/if}
-
-		{#if generateError}
-			<div class="mb-4 alert alert-error">
-				<AlertCircle class="h-5 w-5" />
-				<span>{generateError}</span>
-			</div>
-		{/if}
 
 		{#if !data.mainApiKey && !data.streamingApiKey}
 			<div class="mb-4 alert alert-info">
@@ -305,7 +290,7 @@
 				<div class="mt-4 card-actions justify-end">
 					<button
 						class="btn gap-2 btn-sm btn-warning"
-						onclick={() => regenerateKey('main')}
+						onclick={() => promptRegenerate('main')}
 						disabled={regeneratingMain || regeneratingStreaming}
 					>
 						{#if regeneratingMain}
@@ -400,7 +385,7 @@
 				<div class="mt-4 card-actions justify-end">
 					<button
 						class="btn gap-2 btn-sm btn-warning"
-						onclick={() => regenerateKey('streaming')}
+						onclick={() => promptRegenerate('streaming')}
 						disabled={regeneratingMain || regeneratingStreaming}
 					>
 						{#if regeneratingStreaming}
@@ -488,3 +473,14 @@
 		</div>
 	</div>
 </div>
+
+<ConfirmationModal
+	open={confirmRegenerateOpen}
+	title="Regenerate API Key"
+	message="Are you sure you want to regenerate this API key? The current key will be permanently destroyed and any applications using it will stop working immediately."
+	confirmLabel="Regenerate"
+	confirmVariant="warning"
+	loading={regeneratingMain || regeneratingStreaming}
+	onConfirm={() => regenerateKey(regenerateTarget)}
+	onCancel={() => (confirmRegenerateOpen = false)}
+/>

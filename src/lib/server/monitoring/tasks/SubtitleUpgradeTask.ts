@@ -17,6 +17,7 @@ import {
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { getSubtitleSearchService } from '$lib/server/subtitles/services/SubtitleSearchService.js';
 import { getSubtitleDownloadService } from '$lib/server/subtitles/services/SubtitleDownloadService.js';
+import { getSubtitleProviderManager } from '$lib/server/subtitles/services/SubtitleProviderManager.js';
 import { LanguageProfileService } from '$lib/server/subtitles/services/LanguageProfileService.js';
 import { logger } from '$lib/logging/index.js';
 import { normalizeLanguageCode } from '$lib/shared/languages';
@@ -53,6 +54,30 @@ export async function executeSubtitleUpgradeTask(
 	let itemsProcessed = 0;
 	let itemsGrabbed = 0;
 	let errors = 0;
+
+	// Check provider availability before starting (was missing - unlike MissingSubtitlesTask)
+	const providerManager = getSubtitleProviderManager();
+	const availableProviders = await providerManager.getEnabledProviders();
+	if (availableProviders.length === 0) {
+		logger.warn(
+			'[SubtitleUpgradeTask] No subtitle providers available (all throttled or disabled), skipping upgrade search'
+		);
+		return {
+			taskType: 'subtitleUpgrade',
+			itemsProcessed: 0,
+			itemsGrabbed: 0,
+			errors: 0,
+			executedAt
+		};
+	}
+
+	logger.info(
+		{
+			count: availableProviders.length,
+			providers: availableProviders.map((p) => p.name)
+		},
+		'[SubtitleUpgradeTask] Available providers'
+	);
 
 	const searchService = getSubtitleSearchService();
 	const downloadService = getSubtitleDownloadService();
@@ -190,11 +215,23 @@ async function searchMovieSubtitleUpgrades(
 		}
 	}
 
+	// Get provider manager for per-batch health checks
+	const providerManager = getSubtitleProviderManager();
+
 	// Process movies
 	const movieEntries = Array.from(movieMap.values());
 	for (let i = 0; i < movieEntries.length; i += MAX_CONCURRENT_SEARCHES) {
 		// Check for cancellation between batches
 		ctx?.checkCancelled();
+
+		// Re-check provider availability each batch (Bazarr pattern: break when all throttled)
+		const currentProviders = await providerManager.getEnabledProviders();
+		if (currentProviders.length === 0) {
+			logger.warn(
+				'[SubtitleUpgradeTask] All providers throttled or disabled mid-run, stopping movie upgrade search'
+			);
+			break;
+		}
 
 		const batch = movieEntries.slice(i, i + MAX_CONCURRENT_SEARCHES);
 
@@ -385,11 +422,23 @@ async function searchEpisodeSubtitleUpgrades(
 
 	const seriesMap = new Map(seriesData.map((s) => [s.id, s]));
 
+	// Get provider manager for per-batch health checks
+	const providerManager = getSubtitleProviderManager();
+
 	// Process episodes
 	const episodeEntries = Array.from(episodeMap.values());
 	for (let i = 0; i < episodeEntries.length; i += MAX_CONCURRENT_SEARCHES) {
 		// Check for cancellation between batches
 		ctx?.checkCancelled();
+
+		// Re-check provider availability each batch (Bazarr pattern: break when all throttled)
+		const currentProviders = await providerManager.getEnabledProviders();
+		if (currentProviders.length === 0) {
+			logger.warn(
+				'[SubtitleUpgradeTask] All providers throttled or disabled mid-run, stopping episode upgrade search'
+			);
+			break;
+		}
 
 		const batch = episodeEntries.slice(i, i + MAX_CONCURRENT_SEARCHES);
 

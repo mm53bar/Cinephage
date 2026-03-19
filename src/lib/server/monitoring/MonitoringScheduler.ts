@@ -34,7 +34,8 @@ const DEFAULT_INTERVALS = {
 	pendingRelease: 0.25, // Every 15 minutes
 	missingSubtitles: 6, // Every 6 hours
 	subtitleUpgrade: 24, // Daily
-	smartListRefresh: 1 // Hourly (checks which smart lists are due based on their individual intervals)
+	smartListRefresh: 1, // Hourly (checks which smart lists are due based on their individual intervals)
+	historyCleanup: 24 // Daily
 } as const;
 
 /**
@@ -116,6 +117,7 @@ export interface MonitoringStatus {
 		missingSubtitles: TaskStatus;
 		subtitleUpgrade: TaskStatus;
 		smartListRefresh: TaskStatus;
+		historyCleanup: TaskStatus;
 	};
 }
 
@@ -192,7 +194,8 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			'pendingRelease',
 			'missingSubtitles',
 			'subtitleUpgrade',
-			'smartListRefresh'
+			'smartListRefresh',
+			'historyCleanup'
 		];
 		for (const taskType of taskTypes) {
 			// First try to load from task_settings (new system)
@@ -465,6 +468,9 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 		const smartListRefreshInterval =
 			(await taskSettingsService.getTaskInterval('smartListRefresh')) ??
 			DEFAULT_INTERVALS.smartListRefresh;
+		const historyCleanupInterval =
+			(await taskSettingsService.getTaskInterval('historyCleanup')) ??
+			DEFAULT_INTERVALS.historyCleanup;
 
 		this.taskIntervals.set('missing', Math.max(missingInterval, MIN_INTERVAL_HOURS));
 		this.taskIntervals.set('upgrade', Math.max(upgradeInterval, MIN_INTERVAL_HOURS));
@@ -483,6 +489,7 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 			'smartListRefresh',
 			Math.max(smartListRefreshInterval, MIN_INTERVAL_HOURS)
 		);
+		this.taskIntervals.set('historyCleanup', Math.max(historyCleanupInterval, MIN_INTERVAL_HOURS));
 
 		// Log scheduled intervals
 		for (const [taskType, intervalHours] of this.taskIntervals.entries()) {
@@ -781,6 +788,10 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				const { executeSmartListRefreshTask } = await import('./tasks/SmartListRefreshTask.js');
 				return await executeSmartListRefreshTask(ctx);
 			}
+			case 'historyCleanup': {
+				const { executeHistoryCleanupTask } = await import('./tasks/HistoryCleanupTask.js');
+				return await executeHistoryCleanupTask(ctx);
+			}
 			default:
 				throw new Error(`Unknown task type: ${taskType}`);
 		}
@@ -819,6 +830,10 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 
 	async runSmartListRefresh(): Promise<TaskResult> {
 		return await this.executeTaskManually('smartListRefresh');
+	}
+
+	async runHistoryCleanup(): Promise<TaskResult> {
+		return await this.executeTaskManually('historyCleanup');
 	}
 
 	private async executeTaskManually(taskType: string): Promise<TaskResult> {
@@ -983,7 +998,8 @@ export class MonitoringScheduler extends EventEmitter implements BackgroundServi
 				smartListRefresh: await getTaskStatus(
 					'smartListRefresh',
 					DEFAULT_INTERVALS.smartListRefresh
-				)
+				),
+				historyCleanup: await getTaskStatus('historyCleanup', DEFAULT_INTERVALS.historyCleanup)
 			}
 		};
 	}

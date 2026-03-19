@@ -18,6 +18,9 @@ import { getDownloadResolutionService } from './DownloadResolutionService.js';
 import { getNzbValidationService } from './nzb/index.js';
 import { checkNzbAvailability } from './nzb/NzbAvailabilityChecker.js';
 import { strmService, StrmService, getStreamingBaseUrl } from '$lib/server/streaming/index.js';
+import { NamingService } from '$lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
+import { getRecoverableApiKeyByType } from '$lib/server/auth/index.js';
 import { getNzbMountManager } from '$lib/server/streaming/nzb/index.js';
 import { isMediaFile } from '$lib/server/streaming/usenet/types';
 import { fileExists, importService } from '$lib/server/downloadClients/import/index.js';
@@ -127,6 +130,41 @@ export interface GrabResult {
  * Service for grabbing releases and adding them to download queue
  */
 class ReleaseGrabService {
+	/**
+	 * Cached streaming API key check to avoid hitting DB per release.
+	 * Caches the result for 60 seconds to handle key generation mid-task.
+	 */
+	private streamingKeyCache: { available: boolean; checkedAt: number } | null = null;
+	private streamingKeyWarned = false;
+	private static readonly STREAMING_KEY_CACHE_TTL_MS = 60_000;
+
+	/**
+	 * Check if streaming API key is available (cached, 60s TTL).
+	 * Returns true if key exists, false if missing.
+	 */
+	private async isStreamingKeyAvailable(): Promise<boolean> {
+		const now = Date.now();
+		if (
+			this.streamingKeyCache &&
+			now - this.streamingKeyCache.checkedAt < ReleaseGrabService.STREAMING_KEY_CACHE_TTL_MS
+		) {
+			return this.streamingKeyCache.available;
+		}
+
+		try {
+			const key = await getRecoverableApiKeyByType('streaming');
+			const available = !!key;
+			this.streamingKeyCache = { available, checkedAt: now };
+			if (available) {
+				this.streamingKeyWarned = false; // Reset so we warn again if it disappears
+			}
+			return available;
+		} catch {
+			this.streamingKeyCache = { available: false, checkedAt: now };
+			return false;
+		}
+	}
+
 	/**
 	 * Grab a release and add it to the download queue.
 	 *
@@ -880,7 +918,7 @@ class ReleaseGrabService {
 		const safeName = this.sanitizeFilename(seriesRecord.title);
 		const year = seriesRecord.year ?? 'Unknown';
 		const seriesFolder = seriesRecord.path || `${safeName} (${year})`;
-		const seasonFolder = `Season ${seasonNumber.toString().padStart(2, '0')}`;
+		const seasonFolder = this.getNamingService().generateSeasonFolderName(seasonNumber);
 		const folderPath = join(rootFolder.path, seriesFolder, seasonFolder);
 
 		// Create folder if needed
@@ -912,6 +950,13 @@ class ReleaseGrabService {
 	}
 
 	/**
+	 * Get a NamingService instance with current database config
+	 */
+	private getNamingService(): NamingService {
+		return new NamingService(namingSettingsService.getConfigSync());
+	}
+
+	/**
 	 * Verify that a resolved file path stays within the expected root folder.
 	 * Prevents path traversal via '../' in database-sourced path components.
 	 */
@@ -934,6 +979,22 @@ class ReleaseGrabService {
 		options: GrabOptions
 	): Promise<GrabResult> {
 		const { mediaType, movieId, seriesId, seasonNumber, episodeIds, isUpgrade } = options;
+
+		// Pre-check: verify streaming API key exists before processing.
+		// Uses cached check to avoid DB hit per release, and only logs warning once
+		// to prevent flooding activity history with identical errors.
+		if (!(await this.isStreamingKeyAvailable())) {
+			if (!this.streamingKeyWarned) {
+				logger.warn(
+					'[ReleaseGrab] Streaming API key not configured - skipping streaming releases. Generate API keys in Settings > System.'
+				);
+				this.streamingKeyWarned = true;
+			}
+			return {
+				success: false,
+				error: 'Streaming API key not configured. Generate API keys in Settings > System.'
+			};
+		}
 
 		logger.info(
 			{

@@ -4886,7 +4886,9 @@ const MIGRATIONS: MigrationDefinition[] = [
 			}
 
 			sqlite.transaction(() => {
-				sqlite.prepare(`ALTER TABLE "media_browser_servers" RENAME TO "media_browser_servers_old"`).run();
+				sqlite
+					.prepare(`ALTER TABLE "media_browser_servers" RENAME TO "media_browser_servers_old"`)
+					.run();
 				sqlite
 					.prepare(
 						`CREATE TABLE "media_browser_servers" (

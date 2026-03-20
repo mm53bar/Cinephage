@@ -27,6 +27,12 @@ import { movieFiles, series, episodes, episodeFiles } from '$lib/server/db/schem
 import { eq, and, inArray, ne } from 'drizzle-orm';
 import type { SearchCriteria } from '$lib/server/indexers/types';
 import { evaluateIndexerSearchAvailability } from '$lib/server/indexers/search/availability';
+import {
+	getMovieSearchTitles,
+	getSeriesSearchTitles,
+	fetchAndStoreMovieAlternateTitles,
+	fetchAndStoreSeriesAlternateTitles
+} from '$lib/server/services/AlternateTitleService.js';
 
 interface SearchForMovieParams {
 	movieId: string;
@@ -136,6 +142,102 @@ interface MultiSearchResult {
  */
 class SearchOnAddService {
 	private readonly AUTO_GRAB_MIN_SCORE = 0; // Minimum score to auto-grab (0 = any passing release)
+	private readonly ALT_TITLE_REFRESH_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+	private readonly ALT_TITLE_REFRESH_CACHE_MAX_ENTRIES = 2000;
+	private readonly movieAltTitleRefreshAttempts = new Map<string, number>();
+	private readonly seriesAltTitleRefreshAttempts = new Map<string, number>();
+
+	private pruneAltTitleRefreshCache(cache: Map<string, number>, now: number): void {
+		if (cache.size <= this.ALT_TITLE_REFRESH_CACHE_MAX_ENTRIES) {
+			return;
+		}
+
+		// Remove expired entries first
+		for (const [mediaId, attemptedAt] of cache.entries()) {
+			if (now - attemptedAt >= this.ALT_TITLE_REFRESH_COOLDOWN_MS) {
+				cache.delete(mediaId);
+			}
+		}
+
+		if (cache.size <= this.ALT_TITLE_REFRESH_CACHE_MAX_ENTRIES) {
+			return;
+		}
+
+		// If still oversized, drop oldest entries
+		const overflow = cache.size - this.ALT_TITLE_REFRESH_CACHE_MAX_ENTRIES;
+		let removed = 0;
+		for (const mediaId of cache.keys()) {
+			cache.delete(mediaId);
+			removed++;
+			if (removed >= overflow) {
+				break;
+			}
+		}
+	}
+
+	private shouldAttemptAltTitleRefresh(cache: Map<string, number>, mediaId: string): boolean {
+		const now = Date.now();
+		const previousAttempt = cache.get(mediaId);
+		if (
+			typeof previousAttempt === 'number' &&
+			now - previousAttempt < this.ALT_TITLE_REFRESH_COOLDOWN_MS
+		) {
+			return false;
+		}
+
+		cache.set(mediaId, now);
+		this.pruneAltTitleRefreshCache(cache, now);
+		return true;
+	}
+
+	/**
+	 * Test-only helper to reset in-memory refresh guards between test cases.
+	 */
+	resetAlternateTitleRefreshAttemptCacheForTests(): void {
+		if (process.env.NODE_ENV !== 'test') {
+			return;
+		}
+		this.movieAltTitleRefreshAttempts.clear();
+		this.seriesAltTitleRefreshAttempts.clear();
+	}
+
+	private async getMovieSearchTitlesWithRefresh(
+		movieId: string,
+		tmdbId?: number
+	): Promise<string[]> {
+		let titles = await getMovieSearchTitles(movieId);
+		if (tmdbId && titles.length <= 1) {
+			if (this.shouldAttemptAltTitleRefresh(this.movieAltTitleRefreshAttempts, movieId)) {
+				await fetchAndStoreMovieAlternateTitles(movieId, tmdbId);
+				titles = await getMovieSearchTitles(movieId);
+			} else {
+				logger.debug(
+					{ movieId, tmdbId },
+					'[SearchOnAdd] Skipping movie alternate title refresh during cooldown'
+				);
+			}
+		}
+		return titles;
+	}
+
+	private async getSeriesSearchTitlesWithRefresh(
+		seriesId: string,
+		tmdbId?: number
+	): Promise<string[]> {
+		let titles = await getSeriesSearchTitles(seriesId);
+		if (tmdbId && titles.length <= 1) {
+			if (this.shouldAttemptAltTitleRefresh(this.seriesAltTitleRefreshAttempts, seriesId)) {
+				await fetchAndStoreSeriesAlternateTitles(seriesId, tmdbId);
+				titles = await getSeriesSearchTitles(seriesId);
+			} else {
+				logger.debug(
+					{ seriesId, tmdbId },
+					'[SearchOnAdd] Skipping series alternate title refresh during cooldown'
+				);
+			}
+		}
+		return titles;
+	}
 
 	/**
 	 * Search for a movie and automatically grab the best release
@@ -201,12 +303,14 @@ class SearchOnAddService {
 			}
 
 			// Build search criteria
+			const movieSearchTitles = await this.getMovieSearchTitlesWithRefresh(movieId, tmdbId);
 			const criteria: SearchCriteria = {
 				searchType: 'movie',
 				query: title,
 				tmdbId,
 				imdbId: imdbId ?? undefined,
-				year
+				year,
+				searchTitles: movieSearchTitles.length > 0 ? movieSearchTitles : [title]
 			};
 
 			// Perform enriched search to get scored releases (automatic - on add)
@@ -433,12 +537,14 @@ class SearchOnAddService {
 
 			// Build search criteria for the series
 			// For TV, we search without specific season/episode to find season packs first
+			const seriesSearchTitles = await this.getSeriesSearchTitlesWithRefresh(seriesId, tmdbId);
 			const criteria: SearchCriteria = {
 				searchType: 'tv',
 				query: title,
 				tmdbId,
 				tvdbId: tvdbId ?? undefined,
-				imdbId: imdbId ?? undefined
+				imdbId: imdbId ?? undefined,
+				searchTitles: seriesSearchTitles.length > 0 ? seriesSearchTitles : [title]
 			};
 
 			// Perform enriched search to get scored releases (automatic - on add)
@@ -631,6 +737,10 @@ class SearchOnAddService {
 			}
 
 			// Build search criteria with season and episode number
+			const seriesSearchTitles = await this.getSeriesSearchTitlesWithRefresh(
+				seriesData.id,
+				seriesData.tmdbId
+			);
 			const criteria: SearchCriteria = {
 				searchType: 'tv',
 				query: seriesData.title,
@@ -638,7 +748,8 @@ class SearchOnAddService {
 				tvdbId: seriesData.tvdbId ?? undefined,
 				imdbId: seriesData.imdbId ?? undefined,
 				season: episode.seasonNumber,
-				episode: episode.episodeNumber
+				episode: episode.episodeNumber,
+				searchTitles: seriesSearchTitles.length > 0 ? seriesSearchTitles : [seriesData.title]
 			};
 
 			// Perform enriched search to get scored releases (automatic - on add)
@@ -831,13 +942,18 @@ class SearchOnAddService {
 			}
 
 			// Build search criteria with season only (no episode number = season pack search)
+			const seriesSearchTitles = await this.getSeriesSearchTitlesWithRefresh(
+				seriesData.id,
+				seriesData.tmdbId
+			);
 			const criteria: SearchCriteria = {
 				searchType: 'tv',
 				query: seriesData.title,
 				tmdbId: seriesData.tmdbId,
 				tvdbId: seriesData.tvdbId ?? undefined,
 				imdbId: seriesData.imdbId ?? undefined,
-				season: seasonNumber
+				season: seasonNumber,
+				searchTitles: seriesSearchTitles.length > 0 ? seriesSearchTitles : [seriesData.title]
 			};
 
 			// Perform enriched search to get scored releases (automatic - on add)

@@ -11,7 +11,11 @@ const mocks = vi.hoisted(() => ({
 	grabRelease: vi.fn(),
 	getIndexerManager: vi.fn(),
 	searchWithMultiSeasonPriority: vi.fn(),
-	getMultiSeasonSearchStrategy: vi.fn()
+	getMultiSeasonSearchStrategy: vi.fn(),
+	getMovieSearchTitles: vi.fn(),
+	getSeriesSearchTitles: vi.fn(),
+	fetchAndStoreMovieAlternateTitles: vi.fn(),
+	fetchAndStoreSeriesAlternateTitles: vi.fn()
 }));
 
 vi.mock('$lib/server/db/index.js', () => ({
@@ -43,6 +47,13 @@ vi.mock('$lib/server/downloads/MultiSeasonSearchStrategy.js', () => ({
 	getMultiSeasonSearchStrategy: mocks.getMultiSeasonSearchStrategy
 }));
 
+vi.mock('$lib/server/services/AlternateTitleService.js', () => ({
+	getMovieSearchTitles: mocks.getMovieSearchTitles,
+	getSeriesSearchTitles: mocks.getSeriesSearchTitles,
+	fetchAndStoreMovieAlternateTitles: mocks.fetchAndStoreMovieAlternateTitles,
+	fetchAndStoreSeriesAlternateTitles: mocks.fetchAndStoreSeriesAlternateTitles
+}));
+
 const mockLogger = vi.hoisted(() => ({
 	info: vi.fn(),
 	debug: vi.fn(),
@@ -57,6 +68,10 @@ vi.mock('$lib/logging/index.js', () => ({
 }));
 
 import { searchOnAdd } from './searchOnAdd';
+
+function resetAlternateTitleRefreshCache(): void {
+	(searchOnAdd as any).resetAlternateTitleRefreshAttemptCacheForTests?.();
+}
 
 const TEST_INDEXER_CONFIG = {
 	id: 'indexer-1',
@@ -98,7 +113,12 @@ function createIndexerManagerMock() {
 describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetAlternateTitleRefreshCache();
 		mocks.getIndexerManager.mockResolvedValue(createIndexerManagerMock());
+		mocks.getMovieSearchTitles.mockResolvedValue([]);
+		mocks.getSeriesSearchTitles.mockResolvedValue([]);
+		mocks.fetchAndStoreMovieAlternateTitles.mockResolvedValue(0);
+		mocks.fetchAndStoreSeriesAlternateTitles.mockResolvedValue(0);
 		mocks.getMultiSeasonSearchStrategy.mockReturnValue({
 			searchWithMultiSeasonPriority: mocks.searchWithMultiSeasonPriority
 		});
@@ -206,6 +226,7 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 	});
 
 	it('uses automatic search source for monitored-series episode auto-search', async () => {
+		mocks.getSeriesSearchTitles.mockResolvedValue(['The Pitt', 'Питт']);
 		mocks.episodesFindFirst.mockResolvedValue({
 			id: 'ep-1',
 			seriesId: 'series-1',
@@ -254,7 +275,9 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 		const result = await searchOnAdd.searchForEpisode({ episodeId: 'ep-1' });
 
 		expect(mocks.searchEnhanced).toHaveBeenCalledWith(
-			expect.any(Object),
+			expect.objectContaining({
+				searchTitles: ['The Pitt', 'Питт']
+			}),
 			expect.objectContaining({ searchSource: 'automatic' })
 		);
 		expect(mocks.grabRelease).toHaveBeenCalledOnce();
@@ -263,12 +286,79 @@ describe('SearchOnAddService.searchForEpisode monitoring behavior', () => {
 			releaseName: 'The.Pitt.S02E01.1080p.WEB.H264-GROUP'
 		});
 	});
+
+	it('refreshes series alternate titles only once during cooldown across repeated episode searches', async () => {
+		mocks.getSeriesSearchTitles.mockResolvedValue(['The Pitt']);
+		mocks.fetchAndStoreSeriesAlternateTitles.mockResolvedValue(0);
+		mocks.episodesFindFirst
+			.mockResolvedValueOnce({
+				id: 'ep-1',
+				seriesId: 'series-1',
+				seasonNumber: 2,
+				episodeNumber: 1
+			})
+			.mockResolvedValueOnce({
+				id: 'ep-2',
+				seriesId: 'series-1',
+				seasonNumber: 2,
+				episodeNumber: 2
+			});
+		mocks.seriesFindFirst.mockResolvedValue({
+			id: 'series-1',
+			title: 'The Pitt',
+			tmdbId: 250307,
+			tvdbId: 448176,
+			imdbId: 'tt3193862',
+			monitored: true,
+			scoringProfileId: null
+		});
+		mocks.episodeFilesFindMany.mockResolvedValue([]);
+		mocks.searchEnhanced.mockResolvedValue({
+			releases: [
+				{
+					title: 'The.Pitt.S02E01.1080p.WEB.H264-GROUP',
+					size: 2_000_000_000,
+					parsed: {
+						resolution: '1080p',
+						source: 'webdl',
+						codec: 'h264',
+						hdr: null
+					},
+					indexerId: 'indexer-1',
+					infoHash: 'abc123',
+					downloadUrl: 'https://example.test/download/1',
+					magnetUrl: null
+				}
+			],
+			rejectedCount: 0
+		});
+		mocks.evaluateForEpisode.mockResolvedValue({
+			accepted: true,
+			isUpgrade: false
+		});
+		mocks.grabRelease.mockResolvedValue({
+			success: true,
+			releaseName: 'The.Pitt.S02E01.1080p.WEB.H264-GROUP',
+			queueItemId: 'queue-1'
+		});
+
+		await searchOnAdd.searchForEpisode({ episodeId: 'ep-1' });
+		await searchOnAdd.searchForEpisode({ episodeId: 'ep-2' });
+
+		expect(mocks.fetchAndStoreSeriesAlternateTitles).toHaveBeenCalledTimes(1);
+		expect(mocks.fetchAndStoreSeriesAlternateTitles).toHaveBeenCalledWith('series-1', 250307);
+	});
 });
 
 describe('SearchOnAddService.searchForMovie monitoring behavior', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetAlternateTitleRefreshCache();
 		mocks.getIndexerManager.mockResolvedValue(createIndexerManagerMock());
+		mocks.getMovieSearchTitles.mockResolvedValue([]);
+		mocks.getSeriesSearchTitles.mockResolvedValue([]);
+		mocks.fetchAndStoreMovieAlternateTitles.mockResolvedValue(0);
+		mocks.fetchAndStoreSeriesAlternateTitles.mockResolvedValue(0);
 		mocks.movieFilesFindFirst.mockResolvedValue(undefined);
 		mocks.grabRelease.mockResolvedValue({
 			success: true,
@@ -321,6 +411,7 @@ describe('SearchOnAddService.searchForMovie monitoring behavior', () => {
 	});
 
 	it('uses automatic search source by default', async () => {
+		mocks.getMovieSearchTitles.mockResolvedValue(['The Interview', 'Интервью']);
 		mocks.searchEnhanced.mockResolvedValue({
 			releases: [
 				{
@@ -352,7 +443,9 @@ describe('SearchOnAddService.searchForMovie monitoring behavior', () => {
 
 		expect(mocks.searchEnhanced).toHaveBeenCalledOnce();
 		expect(mocks.searchEnhanced).toHaveBeenCalledWith(
-			expect.any(Object),
+			expect.objectContaining({
+				searchTitles: ['The Interview', 'Интервью']
+			}),
 			expect.objectContaining({ searchSource: 'automatic' })
 		);
 		expect(mocks.grabRelease).toHaveBeenCalledOnce();
@@ -361,12 +454,60 @@ describe('SearchOnAddService.searchForMovie monitoring behavior', () => {
 			releaseName: 'The.Interview.2014.1080p.WEB.H264-GROUP'
 		});
 	});
+
+	it('refreshes movie alternate titles once when only one title variant exists', async () => {
+		mocks.getMovieSearchTitles
+			.mockResolvedValueOnce(['The Interview'])
+			.mockResolvedValueOnce(['The Interview', 'Интервью']);
+		mocks.fetchAndStoreMovieAlternateTitles.mockResolvedValue(1);
+		mocks.searchEnhanced.mockResolvedValue({
+			releases: [
+				{
+					title: 'The.Interview.2014.1080p.WEB.H264-GROUP',
+					size: 2_000_000_000,
+					parsed: {
+						resolution: '1080p',
+						source: 'webdl',
+						codec: 'h264',
+						hdr: null
+					},
+					indexerId: 'indexer-1',
+					infoHash: 'abc123',
+					downloadUrl: 'stream://movie/228967',
+					magnetUrl: null
+				}
+			],
+			rejectedCount: 0
+		});
+
+		await searchOnAdd.searchForMovie({
+			movieId: 'movie-1',
+			tmdbId: 228967,
+			imdbId: 'tt2788710',
+			title: 'The Interview',
+			year: 2014,
+			scoringProfileId: 'streamer'
+		});
+
+		expect(mocks.fetchAndStoreMovieAlternateTitles).toHaveBeenCalledWith('movie-1', 228967);
+		expect(mocks.searchEnhanced).toHaveBeenCalledWith(
+			expect.objectContaining({
+				searchTitles: ['The Interview', 'Интервью']
+			}),
+			expect.objectContaining({ searchSource: 'automatic' })
+		);
+	});
 });
 
 describe('SearchOnAddService.searchForMissingEpisodes monitoring behavior', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		resetAlternateTitleRefreshCache();
 		mocks.getIndexerManager.mockResolvedValue(createIndexerManagerMock());
+		mocks.getMovieSearchTitles.mockResolvedValue([]);
+		mocks.getSeriesSearchTitles.mockResolvedValue([]);
+		mocks.fetchAndStoreMovieAlternateTitles.mockResolvedValue(0);
+		mocks.fetchAndStoreSeriesAlternateTitles.mockResolvedValue(0);
 		mocks.getMultiSeasonSearchStrategy.mockReturnValue({
 			searchWithMultiSeasonPriority: mocks.searchWithMultiSeasonPriority
 		});

@@ -1627,6 +1627,7 @@ export class SearchOrchestrator {
 		criteria: SearchCriteria
 	): ReleaseResult[] {
 		const isTvSearchCriteria = criteria.searchType === 'tv';
+		const isMovieSearchCriteria = criteria.searchType === 'movie';
 		const hasEpisodeTarget = isTvSearchCriteria && criteria.episode !== undefined;
 		const hasSeasonTarget = isTvSearchCriteria && criteria.season !== undefined;
 		const allowInteractiveTvFallback =
@@ -1634,6 +1635,9 @@ export class SearchOrchestrator {
 			criteria.searchSource === 'interactive' &&
 			!hasEpisodeTarget &&
 			!hasSeasonTarget;
+		const allowInteractiveMovieFallback =
+			isMovieSearchCriteria && criteria.searchSource === 'interactive';
+		const allowInteractiveFallback = allowInteractiveTvFallback || allowInteractiveMovieFallback;
 
 		// Collect all expected titles: query + searchTitles
 		const expectedTitles: string[] = [];
@@ -1643,8 +1647,9 @@ export class SearchOrchestrator {
 		// If we have no titles to compare against, skip filtering
 		if (expectedTitles.length === 0) return releases;
 
-		// Normalize titles for comparison: lowercase, remove non-alphanumeric
-		const normalize = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+		// Normalize titles for comparison while preserving Unicode letters/numbers.
+		const normalize = (s: string): string =>
+			this.normalizeForComparison(s).replace(/\s+/g, '').trim();
 
 		const normalizedExpected = expectedTitles.map(normalize).filter((t) => t.length > 0);
 		if (normalizedExpected.length === 0) return releases;
@@ -1668,9 +1673,9 @@ export class SearchOrchestrator {
 		const beforeCount = releases.length;
 		const filtered = releases.filter((release) => {
 			const releaseName = normalize(extractReleaseName(release.title));
-			// If we cannot derive a comparable ASCII title token, keep only for
-			// interactive show-level browsing; episode/season lookups stay strict.
-			if (releaseName.length === 0) return allowInteractiveTvFallback;
+			// If we cannot derive a comparable title token, keep only for
+			// interactive browsing fallbacks; targeted episode/season lookups stay strict.
+			if (releaseName.length === 0) return allowInteractiveFallback;
 
 			// Check if any expected title is similar enough to the release name
 			// Using Levenshtein distance-based similarity instead of substring matching
@@ -1720,7 +1725,7 @@ export class SearchOrchestrator {
 
 		// For interactive TV, avoid a hard zero-result failure mode caused by
 		// localization/transliteration mismatches in tracker titles.
-		if (allowInteractiveTvFallback && beforeCount > 0 && filtered.length === 0) {
+		if (allowInteractiveFallback && beforeCount > 0 && filtered.length === 0) {
 			logger.info(
 				{
 					before: beforeCount,
@@ -1730,7 +1735,7 @@ export class SearchOrchestrator {
 					season: isTvSearchCriteria ? criteria.season : undefined,
 					episode: isTvSearchCriteria ? criteria.episode : undefined
 				},
-				'[SearchOrchestrator] Title relevance fallback applied for interactive TV search'
+				'[SearchOrchestrator] Title relevance fallback applied for interactive search'
 			);
 			return releases;
 		}
@@ -1905,6 +1910,9 @@ export class SearchOrchestrator {
 			// PRIORITY 2: Title + Year Fallback (if no ID match possible)
 			if (hasSearchTitles && hasSearchYear) {
 				const isInteractiveSearch = criteria.searchSource === 'interactive';
+				const isEpisodeTarget = isTvSearch(criteria) && criteria.episode !== undefined;
+				const isSeasonTarget = isTvSearch(criteria) && criteria.season !== undefined;
+				const releaseHasAnyId = !!(release.tmdbId || release.imdbId || release.tvdbId);
 
 				// Parse release title
 				const parsedRelease = getParsed();
@@ -1950,6 +1958,28 @@ export class SearchOrchestrator {
 					: isInteractiveSearch;
 
 				if (!titleMatch || !yearMatch) {
+					// Interactive fallback for localized/transliterated indexer titles that
+					// don't match stored title variants yet, while still enforcing year.
+					// Keep this strict for targeted TV lookups (season/episode).
+					const allowInteractiveTitleFallback =
+						isInteractiveSearch &&
+						yearMatch &&
+						!releaseHasAnyId &&
+						(isMovieSearch(criteria) ||
+							(isTvSearch(criteria) && !isEpisodeTarget && !isSeasonTarget));
+					if (allowInteractiveTitleFallback) {
+						logger.debug(
+							{
+								releaseTitle: release.title,
+								parsedTitle: parsedRelease.cleanTitle,
+								parsedYear: parsedRelease.year,
+								criteriaYear: searchYear
+							},
+							'[SearchOrchestrator] Applying interactive localized-title fallback'
+						);
+						return true;
+					}
+
 					logger.debug(
 						{
 							releaseTitle: release.title,
@@ -1998,8 +2028,9 @@ export class SearchOrchestrator {
 	 */
 	private normalizeForComparison(str: string): string {
 		return str
+			.normalize('NFKC')
 			.toLowerCase()
-			.replace(/[^\w\s]/g, '') // Remove punctuation
+			.replace(/[^\p{L}\p{N}\s]/gu, '') // Remove punctuation, keep Unicode letters/numbers
 			.replace(/\s+/g, ' ') // Normalize whitespace
 			.trim();
 	}

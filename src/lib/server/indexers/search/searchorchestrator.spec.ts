@@ -623,6 +623,27 @@ describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 		expect(filtered[0].title).toBe('Военная машина WEB-DL');
 	});
 
+	it('keeps interactive movie results when title is transliterated and year matches', () => {
+		const releases = [
+			{
+				title: 'Osobennosti nacionalnoy ohoty [1995, Russia, comedy, DVDRip]',
+				indexerName: 'FakeIndexer'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			searchSource: 'interactive',
+			query: 'Peculiarities of the National Hunt',
+			searchTitles: ['Peculiarities of the National Hunt'],
+			year: 1995
+		} as any;
+
+		const filtered = (orchestrator as any).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('Osobennosti nacionalnoy ohoty');
+	});
+
 	it('keeps automatic filtering strict for localized title mismatch', () => {
 		const releases = [{ title: 'Военная машина WEB-DL', indexerName: 'FakeIndexer' }] as any[];
 
@@ -662,6 +683,42 @@ describe('SearchOrchestrator.filterByTitleRelevance', () => {
 		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
 		expect(filtered).toHaveLength(1);
 		expect(filtered[0].title).toContain('War Machine');
+	});
+
+	it('matches localized unicode movie titles when expected title is localized', () => {
+		const releases = [
+			{
+				title: 'Особенности национальной охоты [1995, комедия, DVDRip]'
+			},
+			{
+				title: 'Другой фильм [1995, драма, DVDRip]'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			query: 'Особенности национальной охоты',
+			searchTitles: ['Особенности национальной охоты']
+		} as any;
+
+		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('Особенности национальной охоты');
+	});
+
+	it('falls back to pre-filtered releases for interactive movie when localization mismatches', () => {
+		const releases = [{ title: 'Osobennosti nacionalnoy ohoty [1995, comedy, DVDRip]' }] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			searchSource: 'interactive',
+			query: 'Peculiarities of the National Hunt',
+			searchTitles: ['Peculiarities of the National Hunt']
+		} as any;
+
+		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered).toEqual(releases);
 	});
 
 	it('keeps TV releases with long tracker metadata when series title matches', () => {

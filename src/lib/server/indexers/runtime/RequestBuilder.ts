@@ -511,6 +511,7 @@ export class RequestBuilder {
 			'query_term',
 			'name', // UNIT3D trackers use 'name' for keyword search
 			'search',
+			's', // Kinozal uses 's' for keyword search
 			'nm', // RuTracker uses 'nm' for keyword search
 			'mire', // nCore uses 'mire' for keyword search
 			'imdb', // Some trackers use 'imdb' instead of 'imdbid'
@@ -697,7 +698,7 @@ export class RequestBuilder {
 		if (!trimmed) return false;
 
 		const lowerKey = key.toLowerCase();
-		const keywordKeys = new Set(['q', 'query', 'query_term', 'name', 'search', 'nm', 'mire']);
+		const keywordKeys = new Set(['q', 'query', 'query_term', 'name', 'search', 's', 'nm', 'mire']);
 		if (!keywordKeys.has(lowerKey)) {
 			return true;
 		}

@@ -561,6 +561,76 @@ describe('SearchOrchestrator.filterBySeasonEpisode', () => {
 			['Smallville.S01.COMPLETE.1080p.BluRay', 'Smallville.S01E01.1080p.WEBRip'].sort()
 		);
 	});
+
+	it('rejects incomplete RuTracker season packs for season-only searches', () => {
+		const releases = [
+			{
+				title: '/ Stranger Things / S1E1-8 8 [2016, WEB-DL 2160p]',
+				indexerName: 'RuTracker.org'
+			},
+			{
+				title: '/ Stranger Things / S1E1-6 8 [2016, WEB-DL 2160p]',
+				indexerName: 'RuTracker.org'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			season: 1
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria, {
+			seasonEpisodeCount: 8
+		});
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toBe('Stranger Things: S1E1-8 of 8 [2016, WEB-DL 2160p]');
+	});
+
+	it('rejects RuTracker packs that exceed target season episode count', () => {
+		const releases = [
+			{
+				title: 'The Vampire Diaries: S1E1-171 of 171 [2009-2017, BDRip] MVO (LostFilm)',
+				indexerName: 'RuTracker.org'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			season: 1
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria, {
+			seasonEpisodeCount: 22
+		});
+
+		expect(filtered).toHaveLength(0);
+	});
+
+	it('uses episode pointers for RuTracker season packs in automatic episode searches', () => {
+		const releases = [
+			{
+				title: '/ Stranger Things / S1E1-8 8 [2016, WEB-DL 2160p]',
+				indexerName: 'RuTracker.org',
+				guid: 'rutracker-pack'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'automatic',
+			season: 1,
+			episode: 8
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('Season 1 Episode 8 - ');
+		expect(filtered[0].guid).toContain('episode-pointer::s01e08');
+	});
 });
 
 describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {

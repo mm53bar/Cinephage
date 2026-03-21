@@ -145,6 +145,11 @@ interface TvEpisodeCounts {
 	seasonEpisodeCounts: Map<number, number>;
 }
 
+interface SeasonEpisodeFilterContext {
+	seasonEpisodeCount?: number;
+	seasonEpisodeCounts?: Map<number, number>;
+}
+
 function getPositiveIntEnv(name: string, fallback: number): number {
 	const envValue = process.env[name];
 	if (!envValue) return fallback;
@@ -392,8 +397,38 @@ export class SearchOrchestrator {
 			'[SearchOrchestrator] After deduplication'
 		);
 
+		// Get TV episode counts from TMDB for season-pack size validation and
+		// RuTracker season-pack completion gating.
+		let seriesEpisodeCount = opts.enrichment?.seriesEpisodeCount;
+		let seasonEpisodeCounts = opts.enrichment?.seasonEpisodeCounts;
+		if (
+			isTvSearch(enrichedCriteria) &&
+			enrichedCriteria.tmdbId &&
+			(seriesEpisodeCount === undefined || !seasonEpisodeCounts || seasonEpisodeCounts.size === 0)
+		) {
+			const tvCounts = await this.getTvEpisodeCounts(enrichedCriteria.tmdbId);
+			if (tvCounts) {
+				seriesEpisodeCount ??= tvCounts.seriesEpisodeCount;
+				seasonEpisodeCounts ??= tvCounts.seasonEpisodeCounts;
+			}
+		}
+
+		let seasonEpisodeCount = opts.enrichment?.seasonEpisodeCount;
+		if (
+			seasonEpisodeCount === undefined &&
+			isTvSearch(enrichedCriteria) &&
+			enrichedCriteria.season !== undefined
+		) {
+			seasonEpisodeCount =
+				seasonEpisodeCounts?.get(enrichedCriteria.season) ??
+				(await this.getSeasonEpisodeCount(enrichedCriteria));
+		}
+
 		// Filter by season/episode if specified
-		let filtered = this.filterBySeasonEpisode(deduped, enrichedCriteria);
+		let filtered = this.filterBySeasonEpisode(deduped, enrichedCriteria, {
+			seasonEpisodeCount,
+			seasonEpisodeCounts
+		});
 
 		// Filter by category match (reject releases in wrong categories)
 		if (enrichedCriteria.searchType !== 'basic') {
@@ -422,35 +457,6 @@ export class SearchOrchestrator {
 				: enrichedCriteria.searchType === 'tv'
 					? 'tv'
 					: undefined;
-
-		// Get TV episode counts from TMDB for season-pack size validation.
-		// Needed for:
-		// - Targeted season searches (single season pack average size)
-		// - Multi-season/complete-series searches (sum episodes across matched seasons)
-		let seriesEpisodeCount = opts.enrichment?.seriesEpisodeCount;
-		let seasonEpisodeCounts = opts.enrichment?.seasonEpisodeCounts;
-		if (
-			isTvSearch(enrichedCriteria) &&
-			enrichedCriteria.tmdbId &&
-			(seriesEpisodeCount === undefined || !seasonEpisodeCounts || seasonEpisodeCounts.size === 0)
-		) {
-			const tvCounts = await this.getTvEpisodeCounts(enrichedCriteria.tmdbId);
-			if (tvCounts) {
-				seriesEpisodeCount ??= tvCounts.seriesEpisodeCount;
-				seasonEpisodeCounts ??= tvCounts.seasonEpisodeCounts;
-			}
-		}
-
-		let seasonEpisodeCount = opts.enrichment?.seasonEpisodeCount;
-		if (
-			seasonEpisodeCount === undefined &&
-			isTvSearch(enrichedCriteria) &&
-			enrichedCriteria.season !== undefined
-		) {
-			seasonEpisodeCount =
-				seasonEpisodeCounts?.get(enrichedCriteria.season) ??
-				(await this.getSeasonEpisodeCount(enrichedCriteria));
-		}
 
 		// Build indexer config map for protocol-specific rejection (seeder minimums, dead torrents, etc.)
 		const indexerConfigs = new Map<string, IndexerConfigForEnrichment>();
@@ -1359,19 +1365,22 @@ export class SearchOrchestrator {
 	 *
 	 * For TV searches with season/episode specified:
 	 * - Season-only search: Returns single-season packs that exactly match the target season
-	 *   (multi-season packs and complete series are excluded to avoid cluttering results)
+	 *   (multi-season packs and complete series are excluded; RuTracker packs must be verifiably complete)
 	 * - Season+episode search:
-	 *   - interactive: Returns matching individual episodes only (no season packs)
-	 *   - automatic: Returns matching individual episodes AND single-season packs
+	 *   - interactive: Returns exact episodes, falls back to episode pointers from matching season packs
+	 *   - automatic: Returns exact episodes and season-pack candidates
+	 *     (RuTracker season-pack candidates are converted to episode pointers)
 	 * - Episode-only search:
-	 *   - interactive: Returns matching individual episodes only
-	 *   - automatic: Returns matching individual episodes and season packs
+	 *   - interactive: Returns exact episodes, falls back to episode pointers from season packs
+	 *   - automatic: Returns exact episodes and season-pack candidates
+	 *     (RuTracker season-pack candidates are converted to episode pointers)
 	 *
 	 * Optimization: Caches parsed results on releases to avoid re-parsing in enricher.
 	 */
 	private filterBySeasonEpisode(
 		releases: ReleaseResult[],
-		criteria: SearchCriteria
+		criteria: SearchCriteria,
+		context?: SeasonEpisodeFilterContext
 	): ReleaseResult[] {
 		// For movie searches, reject releases that are clearly TV episodes
 		if (isMovieSearch(criteria)) {
@@ -1406,6 +1415,10 @@ export class SearchOrchestrator {
 		const targetSeason = criteria.season;
 		const targetEpisode = criteria.episode;
 		const isInteractiveSearch = criteria.searchSource === 'interactive';
+		const expectedSeasonEpisodeCount =
+			targetSeason === undefined
+				? undefined
+				: (context?.seasonEpisodeCount ?? context?.seasonEpisodeCounts?.get(targetSeason));
 
 		// If no season/episode specified, return all
 		if (targetSeason === undefined && targetEpisode === undefined) {
@@ -1466,7 +1479,16 @@ export class SearchOrchestrator {
 		// Season-only search: filter to single-season packs matching the target season
 		if (targetSeason !== undefined && targetEpisode === undefined) {
 			return parsedReleases
-				.filter(({ episodeInfo }) => episodeInfo.isSeasonPack && isSingleSeasonMatch(episodeInfo))
+				.filter(
+					({ release, episodeInfo }) =>
+						episodeInfo.isSeasonPack &&
+						isSingleSeasonMatch(episodeInfo) &&
+						this.isAllowedSeasonPackForSeasonOnlySearch(
+							release,
+							episodeInfo,
+							expectedSeasonEpisodeCount
+						)
+				)
 				.map(({ release }) => this.withFormattedSeasonPackTitle(release));
 		}
 
@@ -1496,12 +1518,13 @@ export class SearchOrchestrator {
 				);
 			}
 
-			const allowed = new Set(
-				[...exactEpisodeMatches, ...seasonPackMatches].map(({ release }) => release)
+			const exactReleases = exactEpisodeMatches.map(({ release }) => release);
+			const seasonPackReleases = seasonPackMatches.map(({ release, episodeInfo }) =>
+				this.shouldCreateRutrackerEpisodePointer(release)
+					? this.createEpisodePointerRelease(release, targetEpisode, targetSeason, episodeInfo)
+					: release
 			);
-			return parsedReleases
-				.filter(({ release }) => allowed.has(release))
-				.map(({ release }) => release);
+			return [...exactReleases, ...seasonPackReleases];
 		}
 
 		// Episode-only search (rare):
@@ -1525,15 +1548,131 @@ export class SearchOrchestrator {
 				);
 			}
 
-			const allowed = new Set(
-				[...exactEpisodeMatches, ...seasonPackMatches].map(({ release }) => release)
+			const exactReleases = exactEpisodeMatches.map(({ release }) => release);
+			const seasonPackReleases = seasonPackMatches.map(({ release, episodeInfo }) =>
+				this.shouldCreateRutrackerEpisodePointer(release)
+					? this.createEpisodePointerRelease(release, targetEpisode, undefined, episodeInfo)
+					: release
 			);
-			return parsedReleases
-				.filter(({ release }) => allowed.has(release))
-				.map(({ release }) => release);
+			return [...exactReleases, ...seasonPackReleases];
 		}
 
 		return releases;
+	}
+
+	private shouldCreateRutrackerEpisodePointer(release: ReleaseResult): boolean {
+		return this.isRuTrackerIndexerName(release.indexerName);
+	}
+
+	private isAllowedSeasonPackForSeasonOnlySearch(
+		release: ReleaseResult,
+		episodeInfo: NonNullable<ReturnType<typeof parseRelease>['episode']>,
+		expectedSeasonEpisodeCount?: number
+	): boolean {
+		if (!this.isRuTrackerIndexerName(release.indexerName)) {
+			return true;
+		}
+
+		const isCompleted = this.isCompletedRuTrackerSeasonPack(
+			release.title,
+			episodeInfo,
+			expectedSeasonEpisodeCount
+		);
+
+		if (!isCompleted) {
+			logger.debug(
+				{
+					title: release.title,
+					indexer: release.indexerName,
+					expectedSeasonEpisodeCount
+				},
+				'[SearchOrchestrator] Rejecting incomplete RuTracker season pack for season-only search'
+			);
+		}
+
+		return isCompleted;
+	}
+
+	private isCompletedRuTrackerSeasonPack(
+		title: string,
+		episodeInfo: NonNullable<ReturnType<typeof parseRelease>['episode']>,
+		expectedSeasonEpisodeCount?: number
+	): boolean {
+		if (!episodeInfo.isSeasonPack) {
+			return false;
+		}
+
+		if (this.titleLooksLikeMultiSeasonPack(title)) {
+			return false;
+		}
+
+		const coveredEpisodes = Array.from(
+			new Set((episodeInfo.episodes ?? []).filter((ep) => Number.isInteger(ep) && ep > 0))
+		).sort((a, b) => a - b);
+		if (coveredEpisodes.length === 0) {
+			return false;
+		}
+
+		const explicitTotal = this.extractExplicitSeasonEpisodeTotal(title);
+		const expectedTotal =
+			typeof expectedSeasonEpisodeCount === 'number' && expectedSeasonEpisodeCount > 0
+				? expectedSeasonEpisodeCount
+				: explicitTotal;
+
+		// For RuTracker season-pack grabs we require a verifiable complete-season signal.
+		if (expectedTotal === undefined || expectedTotal <= 0) {
+			return false;
+		}
+
+		if (coveredEpisodes[0] !== 1) {
+			return false;
+		}
+
+		const maxCoveredEpisode = coveredEpisodes[coveredEpisodes.length - 1];
+		if (maxCoveredEpisode !== expectedTotal || coveredEpisodes.length !== expectedTotal) {
+			return false;
+		}
+
+		for (let episodeNumber = 1; episodeNumber <= expectedTotal; episodeNumber++) {
+			if (coveredEpisodes[episodeNumber - 1] !== episodeNumber) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private titleLooksLikeMultiSeasonPack(title: string): boolean {
+		const multiSeasonPatterns = [
+			/\bseasons?\s*[:\s]*\d{1,2}\s*[-–]\s*\d{1,2}\b/iu,
+			/\bseason\s*[:\s]*\d{1,2}\s*-\s*\d{1,2}\b/iu,
+			/\bS\d{1,2}\s*[-–]\s*S?\d{1,2}\b/iu,
+			/\bepisodes?\s*[:\s]*\d{1,3}\s*[-–]\s*\d{3,4}\b/iu
+		];
+		return multiSeasonPatterns.some((pattern) => pattern.test(title));
+	}
+
+	private extractExplicitSeasonEpisodeTotal(title: string): number | undefined {
+		const patterns = [
+			/\bepisodes?\s*:\s*\d{1,3}\s*[-–]\s*\d{1,3}\s*of\s*(\d{1,3})\b/iu,
+			/\bS\d{1,2}E\d{1,3}\s*[-–]\s*\d{1,3}\s*of\s*(\d{1,3})\b/iu,
+			/\bS\d{1,2}E\d{1,3}\s*[-–]\s*\d{1,3}\s+(\d{1,3})\b/iu
+		];
+		for (const pattern of patterns) {
+			const match = title.match(pattern);
+			if (!match) {
+				continue;
+			}
+			const parsed = Number(match[1]);
+			if (Number.isInteger(parsed) && parsed > 0) {
+				return parsed;
+			}
+		}
+		return undefined;
+	}
+
+	private isRuTrackerIndexerName(indexerName: string | undefined): boolean {
+		return typeof indexerName === 'string' && indexerName.toLowerCase().includes('rutracker');
 	}
 
 	/**

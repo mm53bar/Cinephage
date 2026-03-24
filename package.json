@@ -75,7 +75,7 @@
 		"chokidar": "^5.0.0",
 		"domhandler": "^5.0.3",
 		"dotenv": "^17.3.1",
-		"fast-xml-parser": "^5.4.1",
+		"fast-xml-parser": "^5.5.7",
 		"fflate": "^0.8.2",
 		"guessit-js": "^1.0.1",
 		"iconv-lite": "^0.7.2",

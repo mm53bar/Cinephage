@@ -32,6 +32,7 @@ function createEvent(
 						username: 'admin',
 						displayUsername: 'admin',
 						role: 'admin',
+						language: 'en',
 						banned: 0,
 						banReason: null,
 						banExpires: null,

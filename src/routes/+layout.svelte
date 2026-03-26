@@ -23,7 +23,6 @@
 		Library,
 		User,
 		Filter,
-		Shield,
 		ListTodo,
 		FileSignature,
 		List,
@@ -37,7 +36,10 @@
 		Download,
 		Wifi,
 		WifiOff,
-		Loader2
+		Loader2,
+		Puzzle,
+		FolderCog,
+		Shield
 	} from 'lucide-svelte';
 
 	let { children } = $props();
@@ -114,12 +116,12 @@
 			label: m.nav_settings,
 			icon: Settings,
 			children: [
-				{ href: '/settings/general', label: m.nav_general, icon: Settings },
+				{ href: '/settings/general', label: m.nav_general, icon: FolderCog },
 				{ href: '/settings/system', label: m.nav_system, icon: Server },
 				{ href: '/settings/logs', label: m.nav_logs, icon: ScrollText },
 				{ href: '/settings/naming', label: m.nav_naming, icon: FileSignature },
 				{ href: '/settings/quality', label: m.nav_qualitySettings, icon: Shield },
-				{ href: '/settings/integrations', label: m.nav_integrations, icon: Compass },
+				{ href: '/settings/integrations', label: m.nav_integrations, icon: Puzzle },
 				{ href: '/settings/tasks', label: m.nav_tasks, icon: ListTodo },
 				{ href: '/settings/filters', label: m.nav_globalFilters, icon: Filter },
 				{ href: '/profile', label: m.nav_profile, icon: User }

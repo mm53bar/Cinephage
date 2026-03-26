@@ -8,7 +8,7 @@
 		Subtitles,
 		Languages,
 		Monitor,
-		Shield,
+		Archive,
 		ChevronLeft,
 		ChevronRight
 	} from 'lucide-svelte';
@@ -17,12 +17,6 @@
 	let { children } = $props();
 
 	const navItems = [
-		{
-			href: '/settings/integrations',
-			label: m.common_overview(),
-			icon: Database,
-			exact: true
-		},
 		{
 			href: '/settings/integrations/indexers',
 			label: m.nav_indexers(),
@@ -54,16 +48,13 @@
 			icon: Monitor
 		},
 		{
-			href: '/settings/integrations/captcha',
-			label: m.nav_captchaSolver(),
-			icon: Shield
+			href: '/settings/integrations/streaming',
+			label: m.settings_streaming_heading(),
+			icon: Archive
 		}
 	];
 
-	function isActive(href: string, exact: boolean = false): boolean {
-		if (exact) {
-			return $page.url.pathname === href;
-		}
+	function isActive(href: string): boolean {
 		return $page.url.pathname.startsWith(href);
 	}
 
@@ -130,8 +121,7 @@
 						<a
 							href={resolvePath(item.href)}
 							class="flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-3 text-xs font-medium whitespace-nowrap transition-colors sm:gap-2 sm:px-3 sm:text-sm {isActive(
-								item.href,
-								item.exact
+								item.href
 							)
 								? 'border-primary text-primary'
 								: 'border-transparent text-base-content/70 hover:border-base-300 hover:text-base-content'}"

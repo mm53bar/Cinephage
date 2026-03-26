@@ -9,6 +9,7 @@
 		AlertCircle,
 		ExternalLink
 	} from 'lucide-svelte';
+	import { SettingsPage, SettingsSection } from '$lib/components/ui/settings';
 	import type { PageData } from './$types';
 	import type {
 		RootFolder,
@@ -19,6 +20,7 @@
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 
 	import { RootFolderModal, RootFolderList } from '$lib/components/rootFolders';
+	import { ConfirmationModal } from '$lib/components/ui/modal';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
 
@@ -303,47 +305,36 @@
 	<title>{m.settings_general_pageTitle()}</title>
 </svelte:head>
 
-<div class="w-full p-3 sm:p-4">
-	<div class="mb-5 sm:mb-6">
-		<h1 class="text-2xl font-bold">{m.settings_general_heading()}</h1>
-		<p class="text-base-content/70">
-			{m.settings_general_subtitle()}
-		</p>
-	</div>
-
+<SettingsPage title={m.settings_general_heading()} subtitle={m.settings_general_subtitle()}>
 	<!-- Root Folders Section -->
-	<div class="mb-8">
-		<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-			<div class="min-w-0">
-				<h2 class="text-2xl font-bold">{m.settings_general_rootFolders()}</h2>
-				<p class="text-base-content/70">
-					{m.settings_general_rootFoldersDescription()}
-				</p>
-			</div>
+	<SettingsSection
+		title={m.settings_general_rootFolders()}
+		description={m.settings_general_rootFoldersDescription()}
+		variant="flat"
+	>
+		{#snippet actions()}
 			<button class="btn gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddFolderModal}>
 				<Plus class="h-4 w-4" />
 				{m.settings_general_addFolder()}
 			</button>
-		</div>
+		{/snippet}
 
 		<RootFolderList
 			folders={data.rootFolders}
 			onEdit={openEditFolderModal}
 			onDelete={confirmFolderDelete}
 		/>
-	</div>
+	</SettingsSection>
 
 	<div class="divider"></div>
 
 	<!-- Library Scan Section -->
-	<div class="mb-8">
-		<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-			<div class="min-w-0">
-				<h2 class="text-2xl font-bold">{m.settings_general_libraryScan()}</h2>
-				<p class="text-base-content/70">
-					{m.settings_general_libraryScanDescription()}
-				</p>
-			</div>
+	<SettingsSection
+		title={m.settings_general_libraryScan()}
+		description={m.settings_general_libraryScanDescription()}
+		variant="flat"
+	>
+		{#snippet actions()}
 			<button
 				class="btn gap-2 self-start btn-sm btn-primary sm:w-auto"
 				onclick={() => triggerLibraryScan()}
@@ -357,7 +348,7 @@
 					{m.settings_general_scanLibrary()}
 				{/if}
 			</button>
-		</div>
+		{/snippet}
 
 		{#if data.rootFolders.length === 0}
 			<div class="mb-4 alert alert-warning">
@@ -422,8 +413,8 @@
 				{/if}
 			</div>
 		{/if}
-	</div>
-</div>
+	</SettingsSection>
+</SettingsPage>
 
 <!-- Root Folder Modal -->
 <RootFolderModal
@@ -439,27 +430,12 @@
 />
 
 <!-- Root Folder Delete Confirmation Modal -->
-{#if confirmFolderDeleteOpen}
-	<div class="modal-open modal">
-		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
-			<h3 class="text-lg font-bold">{m.settings_general_confirmDelete()}</h3>
-			<p class="py-4">
-				{m.settings_general_confirmDeleteMessage({ name: deleteFolderTarget?.name ?? '' })}
-			</p>
-			<div class="modal-action flex-col-reverse sm:flex-row">
-				<button class="btn btn-ghost" onclick={() => (confirmFolderDeleteOpen = false)}
-					>{m.action_cancel()}</button
-				>
-				<button class="btn btn-error" onclick={handleConfirmFolderDelete}
-					>{m.action_delete()}</button
-				>
-			</div>
-		</div>
-		<button
-			type="button"
-			class="modal-backdrop cursor-default border-none bg-black/50"
-			onclick={() => (confirmFolderDeleteOpen = false)}
-			aria-label={m.action_close()}
-		></button>
-	</div>
-{/if}
+<ConfirmationModal
+	open={confirmFolderDeleteOpen}
+	title={m.settings_general_confirmDelete()}
+	message={m.settings_general_confirmDeleteMessage({ name: deleteFolderTarget?.name ?? '' })}
+	confirmLabel={m.action_delete()}
+	confirmVariant="error"
+	onConfirm={handleConfirmFolderDelete}
+	onCancel={() => (confirmFolderDeleteOpen = false)}
+/>

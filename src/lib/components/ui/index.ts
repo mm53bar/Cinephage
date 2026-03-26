@@ -18,3 +18,6 @@ export * from './form/index';
 
 // Modal components
 export * from './modal/index';
+
+// Settings components
+export * from './settings/index';

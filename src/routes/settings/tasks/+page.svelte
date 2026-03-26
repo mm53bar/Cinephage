@@ -5,7 +5,8 @@
 	import type { TaskHistoryEntry } from '$lib/types/task';
 	import TasksTable from '$lib/components/tasks/TasksTable.svelte';
 	import CreateTaskPlaceholder from '$lib/components/tasks/CreateTaskPlaceholder.svelte';
-	import { Wifi } from 'lucide-svelte';
+	import { SettingsPage } from '$lib/components/ui/settings';
+	import { Wifi, Plus, XCircle, CheckCircle2 } from 'lucide-svelte';
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 
@@ -309,69 +310,33 @@
 	<title>{m.settings_tasks_pageTitle()}</title>
 </svelte:head>
 
-<div class="w-full space-y-6">
-	<!-- Header -->
-	<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-		<div>
-			<h1 class="text-2xl font-bold">{m.settings_tasks_heading()}</h1>
-			<p class="mt-1 text-base-content/60">
-				{m.settings_tasks_subtitle()}
-			</p>
+<SettingsPage title={m.settings_tasks_heading()} subtitle={m.settings_tasks_subtitle()}>
+	{#snippet actions()}
+		<div class="hidden items-center gap-2 lg:flex">
+			{#if sse.isConnected}
+				<span class="badge gap-1 badge-success">
+					<Wifi class="h-3 w-3" />
+					{m.common_live()}
+				</span>
+			{:else if sse.status === 'connecting' || sse.status === 'error'}
+				<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
+					{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
+				</span>
+			{/if}
 		</div>
-		<div class="flex items-center gap-2 sm:gap-3">
-			<div class="hidden items-center gap-2 lg:flex">
-				{#if sse.isConnected}
-					<span class="badge gap-1 badge-success">
-						<Wifi class="h-3 w-3" />
-						{m.common_live()}
-					</span>
-				{:else if sse.status === 'connecting' || sse.status === 'error'}
-					<span class="badge gap-1 {sse.status === 'error' ? 'badge-error' : 'badge-warning'}">
-						{sse.status === 'error' ? m.common_reconnecting() : m.common_connecting()}
-					</span>
-				{/if}
-			</div>
-			<button
-				class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
-				onclick={() => (showCreateModal = true)}
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="16"
-					height="16"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<line x1="12" y1="5" x2="12" y2="19" />
-					<line x1="5" y1="12" x2="19" y2="12" />
-				</svg>
-				{m.settings_tasks_createTask()}
-			</button>
-		</div>
-	</div>
+		<button
+			class="btn w-full gap-2 btn-sm btn-primary sm:w-auto"
+			onclick={() => (showCreateModal = true)}
+		>
+			<Plus class="h-4 w-4" />
+			{m.settings_tasks_createTask()}
+		</button>
+	{/snippet}
 
 	<!-- Alerts -->
 	{#if errorMessage}
 		<div class="alert-sm alert items-start alert-error sm:items-center">
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				width="20"
-				height="20"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			>
-				<circle cx="12" cy="12" r="10" />
-				<line x1="15" y1="9" x2="9" y2="15" />
-				<line x1="9" y1="9" x2="15" y2="15" />
-			</svg>
+			<XCircle class="h-5 w-5 shrink-0" />
 			<span class="wrap-break-word">{errorMessage}</span>
 			<button class="btn ml-auto btn-ghost btn-xs" onclick={() => (errorMessage = null)}
 				>{m.settings_tasks_dismiss()}</button
@@ -381,20 +346,7 @@
 
 	{#if successMessage}
 		<div class="alert-sm alert items-start alert-success sm:items-center">
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				width="20"
-				height="20"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			>
-				<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-				<polyline points="22 4 12 14.01 9 11.01" />
-			</svg>
+			<CheckCircle2 class="h-5 w-5 shrink-0" />
 			<span class="wrap-break-word">{successMessage}</span>
 			<button class="btn ml-auto btn-ghost btn-xs" onclick={() => (successMessage = null)}
 				>{m.settings_tasks_dismiss()}</button
@@ -413,4 +365,4 @@
 
 	<!-- Create Task Modal -->
 	<CreateTaskPlaceholder isOpen={showCreateModal} onClose={() => (showCreateModal = false)} />
-</div>
+</SettingsPage>

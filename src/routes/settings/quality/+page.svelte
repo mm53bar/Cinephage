@@ -9,6 +9,7 @@
 	import { ProfileList, ProfileModal } from '$lib/components/profiles';
 	import { FormatList, CustomFormatModal } from '$lib/components/formats';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { SettingsPage } from '$lib/components/ui/settings';
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { Sliders, Layers } from 'lucide-svelte';
 
@@ -235,17 +236,9 @@
 	}
 </script>
 
-<div class="w-full p-4">
-	<!-- Header -->
-	<div class="mb-6">
-		<h1 class="text-2xl font-bold">{m.settings_quality_heading()}</h1>
-		<p class="text-base-content/70">
-			{m.settings_quality_subtitle()}
-		</p>
-	</div>
-
+<SettingsPage title={m.settings_quality_heading()} subtitle={m.settings_quality_subtitle()}>
 	<!-- Tabs -->
-	<div class="tabs-boxed mb-6 tabs w-fit">
+	<div class="tabs-boxed tabs w-fit">
 		<button
 			type="button"
 			class="tab gap-2"
@@ -268,7 +261,7 @@
 
 	<!-- Tab Content -->
 	{#if activeTab === 'profiles'}
-		<div class="mb-4">
+		<div class="-mt-2">
 			<p class="text-sm text-base-content/60">
 				{m.settings_quality_profilesDescription()}
 			</p>
@@ -281,7 +274,7 @@
 			onSetDefault={handleSetDefault}
 		/>
 	{:else if activeTab === 'formats'}
-		<div class="mb-4">
+		<div class="-mt-2">
 			<p class="text-sm text-base-content/60">
 				{m.settings_quality_formatsDescription()}
 			</p>
@@ -293,7 +286,7 @@
 			onCreate={openAddFormatModal}
 		/>
 	{/if}
-</div>
+</SettingsPage>
 
 <!-- Profile Modal -->
 <ProfileModal

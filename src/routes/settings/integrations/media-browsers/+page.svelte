@@ -17,6 +17,7 @@
 		MediaBrowserTable
 	} from '$lib/components/mediaBrowsers';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { SettingsPage } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
 
 	interface MediaBrowserFormData {
@@ -498,20 +499,16 @@
 	}
 </script>
 
-<div class="w-full p-3 sm:p-4">
-	<div class="mb-5 sm:mb-6">
-		<h1 class="text-xl font-bold sm:text-2xl">{m.nav_mediaServers()}</h1>
-		<p class="text-base-content/70">
-			{m.settings_integrations_mediaBrowsers_subtitle()}
-		</p>
-	</div>
-
-	<div class="mb-4 flex items-center justify-end">
+<SettingsPage
+	title={m.nav_mediaServers()}
+	subtitle={m.settings_integrations_mediaBrowsers_subtitle()}
+>
+	{#snippet actions()}
 		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
 			{m.settings_integrations_mediaBrowsers_addServer()}
 		</button>
-	</div>
+	{/snippet}
 
 	<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
 		<div class="form-control relative w-full sm:w-56">
@@ -611,7 +608,7 @@
 			/>
 		</div>
 	</div>
-</div>
+</SettingsPage>
 
 <!-- Media Server Modal -->
 <MediaBrowserModal

@@ -12,13 +12,15 @@
 		Search,
 		Wifi,
 		WifiOff,
-		ArrowDown
+		ArrowDown,
+		Loader2
 	} from 'lucide-svelte';
 	import type {
 		CapturedLogDomain,
 		CapturedLogEntry,
 		CapturedLogLevel
 	} from '$lib/logging/log-capture';
+	import { SettingsPage } from '$lib/components/ui/settings';
 	import { createDynamicSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
 	import { toasts } from '$lib/stores/toast.svelte';
@@ -384,33 +386,24 @@
 	<title>{m.settings_logs_pageTitle()}</title>
 </svelte:head>
 
-<div class="w-full space-y-4 p-3 sm:p-4">
-	<!-- Header -->
-	<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-		<div>
-			<h1 class="text-2xl font-bold">{m.settings_logs_heading()}</h1>
-			<p class="mt-1 text-sm text-base-content/60">
-				{m.settings_logs_subtitle()}
-			</p>
-		</div>
-		<div class="flex flex-wrap items-center gap-2">
-			{#if sse.isConnected}
-				<span class="badge gap-1.5 text-xs badge-success">
-					<Wifi class="h-3 w-3" />
-					{m.common_live()}
-				</span>
-			{:else}
-				<span class="badge gap-1.5 text-xs badge-warning">
-					<WifiOff class="h-3 w-3" />
-					{m.common_connecting()}
-				</span>
-			{/if}
-			<span class="badge badge-ghost text-xs">{entryCountLabel}</span>
-			{#if paused && pendingCountLabel}
-				<span class="badge badge-outline text-xs badge-warning">{pendingCountLabel}</span>
-			{/if}
-		</div>
-	</div>
+<SettingsPage title={m.settings_logs_heading()} subtitle={m.settings_logs_subtitle()}>
+	{#snippet actions()}
+		{#if sse.isConnected}
+			<span class="badge gap-1.5 text-xs badge-success">
+				<Wifi class="h-3 w-3" />
+				{m.common_live()}
+			</span>
+		{:else}
+			<span class="badge gap-1.5 text-xs badge-warning">
+				<WifiOff class="h-3 w-3" />
+				{m.common_connecting()}
+			</span>
+		{/if}
+		<span class="badge badge-ghost text-xs">{entryCountLabel}</span>
+		{#if paused && pendingCountLabel}
+			<span class="badge badge-outline text-xs badge-warning">{pendingCountLabel}</span>
+		{/if}
+	{/snippet}
 
 	<!-- Toolbar -->
 	<div class="rounded-lg border border-base-300 bg-base-200 p-3">
@@ -520,7 +513,7 @@
 			{#if entries.length === 0 && !sse.isConnected}
 				<!-- Loading state: SSE still connecting/reconnecting -->
 				<div class="flex items-center gap-3 p-6 font-mono text-sm text-neutral-content/50">
-					<span class="loading loading-sm loading-dots"></span>
+					<Loader2 class="h-4 w-4 animate-spin" />
 					<span>{m.settings_logs_connectingToStream()}</span>
 				</div>
 			{:else if entries.length === 0}
@@ -645,4 +638,4 @@
 			</button>
 		{/if}
 	</div>
-</div>
+</SettingsPage>

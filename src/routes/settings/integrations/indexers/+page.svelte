@@ -18,6 +18,7 @@
 	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { ConfirmationModal } from '$lib/components/ui/modal';
+	import { SettingsPage } from '$lib/components/ui/settings';
 	import * as m from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
@@ -490,18 +491,13 @@
 	}
 </script>
 
-<div class="w-full overflow-x-hidden p-3 sm:p-4">
-	<div class="mb-5 sm:mb-6">
-		<h1 class="text-xl font-bold sm:text-2xl">{m.nav_indexers()}</h1>
-		<p class="text-base-content/70">{m.settings_integrations_indexers_subtitle()}</p>
-	</div>
-
-	<div class="mb-4 flex items-center justify-end">
+<SettingsPage title={m.nav_indexers()} subtitle={m.settings_integrations_indexers_subtitle()}>
+	{#snippet actions()}
 		<button class="btn w-full gap-2 btn-sm btn-primary sm:w-auto" onclick={openAddModal}>
 			<Plus class="h-4 w-4" />
 			{m.settings_integrations_indexers_addButton()}
 		</button>
-	</div>
+	{/snippet}
 
 	{#if data.definitionErrors && data.definitionErrors.length > 0}
 		<div class="mb-4 alert alert-warning">
@@ -557,7 +553,7 @@
 			/>
 		</div>
 	</div>
-</div>
+</SettingsPage>
 
 <!-- Add/Edit Modal -->
 <IndexerModal
@@ -573,29 +569,17 @@
 />
 
 <!-- Delete Confirmation Modal -->
-{#if confirmDeleteOpen}
-	<div class="modal-open modal">
-		<div class="modal-box w-full max-w-[min(28rem,calc(100vw-2rem))] wrap-break-word">
-			<h3 class="text-lg font-bold">{m.ui_modal_deleteTitle()}</h3>
-			<p class="py-4">
-				{m.settings_integrations_deleteConfirmPrefix()}<strong>{deleteTarget?.name}</strong
-				>{m.settings_integrations_deleteConfirmSuffix()}
-			</p>
-			<div class="modal-action">
-				<button class="btn btn-ghost" onclick={() => (confirmDeleteOpen = false)}
-					>{m.action_cancel()}</button
-				>
-				<button class="btn btn-error" onclick={handleConfirmDelete}>{m.action_delete()}</button>
-			</div>
-		</div>
-		<button
-			type="button"
-			class="modal-backdrop cursor-default border-none bg-black/50"
-			onclick={() => (confirmDeleteOpen = false)}
-			aria-label={m.action_close()}
-		></button>
-	</div>
-{/if}
+<ConfirmationModal
+	open={confirmDeleteOpen}
+	title={m.ui_modal_deleteTitle()}
+	messagePrefix={m.settings_integrations_deleteConfirmPrefix()}
+	messageEmphasis={deleteTarget?.name ?? ''}
+	messageSuffix={m.settings_integrations_deleteConfirmSuffix()}
+	confirmLabel={m.action_delete()}
+	confirmVariant="error"
+	onConfirm={handleConfirmDelete}
+	onCancel={() => (confirmDeleteOpen = false)}
+/>
 
 <ConfirmationModal
 	open={confirmBulkDeleteOpen}

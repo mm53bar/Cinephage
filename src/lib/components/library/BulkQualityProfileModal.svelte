@@ -64,7 +64,7 @@
 
 	<div class="mb-4 rounded-lg bg-base-200 p-3">
 		<div class="font-medium">
-			{m.library_bulkQualityProfile_selectedCount({ count: selectedCount, items: itemLabel })}
+			{m.library_bulkQualityProfile_selectedCount({ count: selectedCount })}
 		</div>
 		<div class="text-sm text-base-content/60">
 			{m.library_bulkQualityProfile_description()}

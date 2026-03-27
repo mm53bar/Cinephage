@@ -61,13 +61,13 @@
 	const confirmLabel = $derived.by(() => {
 		switch (actionMode) {
 			case 'remove_and_delete':
-				return m.library_bulkDelete_confirmRemoveAndDelete();
+				return m.library_bulkDelete_confirmRemoveAndDelete({ count: selectedCount });
 			case 'remove_only':
-				return m.library_bulkDelete_confirmRemoveOnly();
+				return m.library_bulkDelete_confirmRemoveOnly({ count: selectedCount });
 			case 'delete_files':
-				return m.library_bulkDelete_confirmDeleteFiles();
+				return m.library_bulkDelete_confirmDeleteFiles({ count: selectedCount });
 			default:
-				return m.library_bulkDelete_confirmUnmatchFiles();
+				return m.library_bulkDelete_confirmUnmatchFiles({ count: selectedCount });
 		}
 	});
 
@@ -97,16 +97,13 @@
 
 	<p class="py-2">
 		{#if actionMode === 'remove_and_delete'}
-			{m.library_bulkDelete_messageRemoveAndDelete({
-				count: selectedCount,
-				items: itemLabel
-			})}
+			{m.library_bulkDelete_messageRemoveAndDelete({ count: selectedCount })}
 		{:else if actionMode === 'remove_only'}
-			{m.library_bulkDelete_messageRemoveOnly({ count: selectedCount, items: itemLabel })}
+			{m.library_bulkDelete_messageRemoveOnly({ count: selectedCount })}
 		{:else if actionMode === 'delete_files'}
-			{m.library_bulkDelete_messageDeleteFiles({ count: selectedCount, items: itemLabel })}
+			{m.library_bulkDelete_messageDeleteFiles({ count: selectedCount })}
 		{:else}
-			{m.library_bulkDelete_messageUnmatchFiles({ count: selectedCount, items: itemLabel })}
+			{m.library_bulkDelete_messageUnmatchFiles({ count: selectedCount })}
 		{/if}
 	</p>
 

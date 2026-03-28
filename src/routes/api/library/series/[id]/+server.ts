@@ -21,6 +21,13 @@ import { monitoringScheduler } from '$lib/server/monitoring/MonitoringScheduler.
 import { deleteAllAlternateTitles } from '$lib/server/services/index.js';
 import { getDownloadClientManager } from '$lib/server/downloadClients/DownloadClientManager.js';
 import { libraryMediaEvents } from '$lib/server/library/LibraryMediaEvents';
+import {
+	validateRootFolder,
+	getAnimeSubtypeEnforcement
+} from '$lib/server/library/LibraryAddService.js';
+import { mediaMoveService } from '$lib/server/library/MediaMoveService.js';
+import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
+import { tmdb } from '$lib/server/tmdb.js';
 
 /**
  * GET /api/library/series/[id]
@@ -184,6 +191,7 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			seasonFolder,
 			seriesType,
 			rootFolderId,
+			moveFilesOnRootChange,
 			wantsSubtitles,
 			languageProfileId
 		} = body;
@@ -191,6 +199,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		// Get current series state BEFORE update to detect monitoring changes
 		const [currentSeries] = await db
 			.select({
+				tmdbId: series.tmdbId,
+				title: series.title,
+				seriesType: series.seriesType,
+				path: series.path,
+				episodeFileCount: series.episodeFileCount,
+				rootFolderId: series.rootFolderId,
 				monitored: series.monitored,
 				wantsSubtitles: series.wantsSubtitles,
 				languageProfileId: series.languageProfileId
@@ -201,6 +215,15 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 		const wasUnmonitored = currentSeries ? !currentSeries.monitored : false;
 
 		const updateData: Record<string, unknown> = {};
+		let moveRequest:
+			| {
+					mediaId: string;
+					mediaTitle: string;
+					relativePath: string;
+					sourceRootFolderId: string;
+					destinationRootFolderId: string;
+			  }
+			| undefined;
 
 		if (typeof monitored === 'boolean') {
 			updateData.monitored = monitored;
@@ -215,7 +238,71 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.seriesType = seriesType;
 		}
 		if (rootFolderId !== undefined) {
-			updateData.rootFolderId = rootFolderId;
+			const nextRootFolderId = typeof rootFolderId === 'string' ? rootFolderId.trim() : '';
+			const currentRootFolderId = currentSeries?.rootFolderId ?? null;
+			if (!nextRootFolderId) {
+				return json(
+					{
+						success: false,
+						error: 'Root folder is required and cannot be unset after adding media.'
+					},
+					{ status: 400 }
+				);
+			}
+
+			// Only validate/apply when reassignment is requested.
+			if (nextRootFolderId !== currentRootFolderId) {
+				const hasExistingFiles = (currentSeries?.episodeFileCount ?? 0) > 0;
+				const canMoveFromCurrentRoot = Boolean(currentRootFolderId);
+				if (hasExistingFiles && canMoveFromCurrentRoot && moveFilesOnRootChange !== true) {
+					return json(
+						{
+							success: false,
+							error:
+								'This series already has files. Enable "Move existing files to new root folder" to change its root folder.'
+						},
+						{ status: 400 }
+					);
+				}
+
+				const enforceAnimeSubtype = await getAnimeSubtypeEnforcement();
+				let isAnimeMedia = false;
+				if (enforceAnimeSubtype && currentSeries) {
+					const tvDetails = await tmdb.getTVShow(currentSeries.tmdbId);
+					isAnimeMedia = isLikelyAnimeMedia({
+						genres: tvDetails.genres,
+						originalLanguage: tvDetails.original_language,
+						originCountries: tvDetails.origin_country,
+						productionCountries: tvDetails.production_countries,
+						title: tvDetails.name,
+						originalTitle: tvDetails.original_name
+					});
+				}
+
+				await validateRootFolder(nextRootFolderId, 'tv', {
+					enforceAnimeSubtype,
+					isAnimeMedia,
+					mediaTitle: currentSeries?.title
+				});
+
+				const shouldMoveFiles =
+					moveFilesOnRootChange === true &&
+					hasExistingFiles &&
+					Boolean(currentSeries?.path) &&
+					canMoveFromCurrentRoot;
+				if (shouldMoveFiles && currentRootFolderId && currentSeries?.path) {
+					moveRequest = {
+						mediaId: params.id,
+						mediaTitle: currentSeries.title,
+						relativePath: currentSeries.path,
+						sourceRootFolderId: currentRootFolderId,
+						destinationRootFolderId: nextRootFolderId
+					};
+				} else {
+					// Recovery path: if files exist but current root folder is missing, re-link directly.
+					updateData.rootFolderId = nextRootFolderId;
+				}
+			}
 		}
 		if (typeof wantsSubtitles === 'boolean') {
 			updateData.wantsSubtitles = wantsSubtitles;
@@ -224,11 +311,30 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			updateData.languageProfileId = languageProfileId;
 		}
 
-		if (Object.keys(updateData).length === 0) {
+		if (Object.keys(updateData).length === 0 && !moveRequest) {
 			return json({ success: false, error: 'No valid fields to update' }, { status: 400 });
 		}
 
-		await db.update(series).set(updateData).where(eq(series.id, params.id));
+		if (Object.keys(updateData).length > 0) {
+			await db.update(series).set(updateData).where(eq(series.id, params.id));
+		}
+
+		let moveTask:
+			| {
+					taskId: string;
+					historyId: string;
+			  }
+			| undefined;
+		if (moveRequest) {
+			moveTask = await mediaMoveService.enqueueMove({
+				mediaType: 'series',
+				mediaId: moveRequest.mediaId,
+				mediaTitle: moveRequest.mediaTitle,
+				relativePath: moveRequest.relativePath,
+				sourceRootFolderId: moveRequest.sourceRootFolderId,
+				destinationRootFolderId: moveRequest.destinationRootFolderId
+			});
+		}
 
 		// If monitoring was just enabled, check if we should trigger a search
 		if (wasUnmonitored && monitored === true) {
@@ -305,7 +411,12 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 		libraryMediaEvents.emitSeriesUpdated(params.id);
 
-		return json({ success: true });
+		return json({
+			success: true,
+			moveQueued: Boolean(moveTask),
+			moveTaskId: moveTask?.taskId,
+			moveTaskHistoryId: moveTask?.historyId
+		});
 	} catch (error) {
 		logger.error('[API] Error updating series', error instanceof Error ? error : undefined);
 		return json(

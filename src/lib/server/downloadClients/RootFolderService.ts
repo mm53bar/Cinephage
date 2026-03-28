@@ -23,7 +23,8 @@ import { libraryWatcherService } from '$lib/server/library/library-watcher.js';
 import type {
 	RootFolder,
 	PathValidationResult,
-	RootFolderMediaType
+	RootFolderMediaType,
+	RootFolderMediaSubType
 } from '$lib/types/downloadClient';
 
 /**
@@ -33,6 +34,7 @@ export interface RootFolderInput {
 	name: string;
 	path: string;
 	mediaType: RootFolderMediaType;
+	mediaSubType?: RootFolderMediaSubType;
 	isDefault?: boolean;
 	readOnly?: boolean;
 	preserveSymlinks?: boolean;
@@ -86,13 +88,21 @@ export class RootFolderService {
 	}
 
 	/**
-	 * Get the default folder for a media type.
+	 * Get the default folder for a media type and optional subtype.
 	 */
-	async getDefaultFolder(mediaType: RootFolderMediaType): Promise<RootFolder | undefined> {
-		const rows = await db
-			.select()
-			.from(rootFoldersTable)
-			.where(and(eq(rootFoldersTable.mediaType, mediaType), eq(rootFoldersTable.isDefault, true)));
+	async getDefaultFolder(
+		mediaType: RootFolderMediaType,
+		mediaSubType?: RootFolderMediaSubType
+	): Promise<RootFolder | undefined> {
+		const whereClause = mediaSubType
+			? and(
+					eq(rootFoldersTable.mediaType, mediaType),
+					eq(rootFoldersTable.mediaSubType, mediaSubType),
+					eq(rootFoldersTable.isDefault, true)
+				)
+			: and(eq(rootFoldersTable.mediaType, mediaType), eq(rootFoldersTable.isDefault, true));
+
+		const rows = await db.select().from(rootFoldersTable).where(whereClause);
 
 		if (!rows[0]) return undefined;
 		return this.rowToFolder(rows[0]);
@@ -110,12 +120,18 @@ export class RootFolderService {
 
 		await this.assertNoPathOverlap(input.path);
 
-		// If this is being set as default, unset any existing defaults for this media type
+		// If this is being set as default, unset any existing defaults for this media type + subtype.
+		const mediaSubType = input.mediaSubType ?? 'standard';
 		if (input.isDefault) {
 			await db
 				.update(rootFoldersTable)
 				.set({ isDefault: false })
-				.where(eq(rootFoldersTable.mediaType, input.mediaType));
+				.where(
+					and(
+						eq(rootFoldersTable.mediaType, input.mediaType),
+						eq(rootFoldersTable.mediaSubType, mediaSubType)
+					)
+				);
 		}
 
 		const id = randomUUID();
@@ -126,6 +142,7 @@ export class RootFolderService {
 			name: input.name,
 			path: input.path,
 			mediaType: input.mediaType,
+			mediaSubType,
 			isDefault: input.isDefault ?? false,
 			readOnly: input.readOnly ?? false,
 			preserveSymlinks: input.preserveSymlinks ?? false,
@@ -193,19 +210,26 @@ export class RootFolderService {
 
 		await this.assertNoPathOverlap(updates.path ?? existing.path, id);
 
-		// If this is being set as default, unset any existing defaults for this media type
+		// If this is being set as default, unset any existing defaults for this media type + subtype.
 		const mediaType = updates.mediaType ?? existing.mediaType;
+		const mediaSubType = updates.mediaSubType ?? existing.mediaSubType;
 		if (updates.isDefault) {
 			await db
 				.update(rootFoldersTable)
 				.set({ isDefault: false })
-				.where(eq(rootFoldersTable.mediaType, mediaType));
+				.where(
+					and(
+						eq(rootFoldersTable.mediaType, mediaType),
+						eq(rootFoldersTable.mediaSubType, mediaSubType)
+					)
+				);
 		}
 
 		const updateData: Record<string, unknown> = {};
 		if (updates.name !== undefined) updateData.name = updates.name;
 		if (updates.path !== undefined) updateData.path = updates.path;
 		if (updates.mediaType !== undefined) updateData.mediaType = updates.mediaType;
+		if (updates.mediaSubType !== undefined) updateData.mediaSubType = updates.mediaSubType;
 		if (updates.isDefault !== undefined) updateData.isDefault = updates.isDefault;
 		if (updates.readOnly !== undefined) updateData.readOnly = updates.readOnly;
 		if (updates.preserveSymlinks !== undefined)
@@ -508,6 +532,7 @@ export class RootFolderService {
 			name: row.name,
 			path: row.path,
 			mediaType: row.mediaType as RootFolderMediaType,
+			mediaSubType: (row.mediaSubType ?? 'standard') as RootFolderMediaSubType,
 			isDefault: !!row.isDefault,
 			readOnly: isReadOnly,
 			preserveSymlinks: !!row.preserveSymlinks,

@@ -11,7 +11,6 @@ import { getStalkerPortalManager } from '$lib/server/livetv/stalker';
 import { stalkerPortalCreateSchema } from '$lib/validation/schemas';
 import { logger } from '$lib/logging';
 import { ValidationError, isAppError } from '$lib/errors';
-import { parseBody } from '$lib/server/api/validate.js';
 
 /**
  * List all portals

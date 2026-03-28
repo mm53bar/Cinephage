@@ -18,6 +18,7 @@ import { searchOnAdd } from './searchOnAdd.js';
 import { SearchWorker, workerManager } from '$lib/server/workers/index.js';
 import { ValidationError, NotFoundError, ExternalServiceError } from '$lib/errors';
 import { createChildLogger } from '$lib/logging';
+import { isAnimeRootFolderEnforcementEnabled } from './anime-root-enforcement-settings.js';
 
 const logger = createChildLogger({ logDomain: 'scans' as const });
 
@@ -27,6 +28,13 @@ export interface RootFolderInfo {
 	id: string;
 	path: string;
 	mediaType: string;
+	mediaSubType: string;
+}
+
+export interface RootFolderValidationOptions {
+	enforceAnimeSubtype?: boolean;
+	isAnimeMedia?: boolean;
+	mediaTitle?: string;
 }
 
 export interface ExternalIds {
@@ -43,7 +51,8 @@ export interface SearchOnAddResult {
  */
 export async function validateRootFolder(
 	rootFolderId: string,
-	expectedMediaType: MediaType
+	expectedMediaType: MediaType,
+	options: RootFolderValidationOptions = {}
 ): Promise<RootFolderInfo> {
 	const [folder] = await db
 		.select()
@@ -63,11 +72,36 @@ export async function validateRootFolder(
 		});
 	}
 
+	const mediaSubType = folder.mediaSubType ?? 'standard';
+	if (options.enforceAnimeSubtype && typeof options.isAnimeMedia === 'boolean') {
+		const expectedMediaSubType = options.isAnimeMedia ? 'anime' : 'standard';
+		if (mediaSubType !== expectedMediaSubType) {
+			const mediaLabel = options.isAnimeMedia ? 'Anime' : 'Standard';
+			const expectedLabel = expectedMediaSubType === 'anime' ? 'Anime' : 'Standard';
+			throw new ValidationError(
+				`${mediaLabel} media can only be added to a ${expectedLabel} root folder while anime enforcement is enabled`,
+				{
+					rootFolderId: folder.id,
+					rootFolderName: folder.name,
+					mediaSubType,
+					expectedMediaSubType,
+					isAnimeMedia: options.isAnimeMedia,
+					title: options.mediaTitle
+				}
+			);
+		}
+	}
+
 	return {
 		id: folder.id,
 		path: folder.path,
-		mediaType: folder.mediaType
+		mediaType: folder.mediaType,
+		mediaSubType
 	};
+}
+
+export async function getAnimeSubtypeEnforcement(): Promise<boolean> {
+	return isAnimeRootFolderEnforcementEnabled();
 }
 
 /**

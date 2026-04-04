@@ -28,7 +28,6 @@
 	import Skeleton from '$lib/components/ui/Skeleton.svelte';
 	import { resolve } from '$app/paths';
 	import { resolvePath } from '$lib/utils/routing';
-	import { formatBytes } from '$lib/utils/format.js';
 	import type { UnifiedActivity } from '$lib/types/activity';
 	import { createSSE } from '$lib/sse';
 	import { layoutState, deriveMobileSseStatus } from '$lib/layout.svelte';
@@ -224,6 +223,30 @@
 		if (activity.status === 'removed') return false;
 		if (activity.mediaType === 'movie') return Boolean(activity.mediaId);
 		return Boolean(activity.seriesId || activity.mediaId);
+	}
+
+	function getCompactProgressLabel(activity: UnifiedActivity): string | null {
+		if (!activity.statusReason) {
+			return null;
+		}
+
+		if (activity.status === 'failed') {
+			return m.status_error();
+		}
+
+		if (activity.status === 'search_error') {
+			return m.status_searchError();
+		}
+
+		return activity.statusReason;
+	}
+
+	function formatBytes(bytes: number): string {
+		if (bytes === 0) return '0 B';
+		const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(1024));
+		const value = bytes / Math.pow(1024, i);
+		return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
 	}
 </script>
 
@@ -885,12 +908,12 @@
 													value={activity.downloadProgress}
 													max="100"
 												></progress>
-											{:else if activity.statusReason}
+											{:else if getCompactProgressLabel(activity)}
 												<span
 													class="max-w-16 truncate text-xs text-base-content/50"
 													title={activity.statusReason}
 												>
-													{activity.statusReason}
+													{getCompactProgressLabel(activity)}
 												</span>
 											{:else}
 												<span class="text-xs text-base-content/50">{config.label}</span>

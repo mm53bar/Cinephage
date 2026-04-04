@@ -98,12 +98,17 @@ export function getAuthSecret(): string {
  * Get the base URL for Better Auth
  * Priority:
  * 1. BETTER_AUTH_URL environment variable
- * 2. Saved external URL from system settings
- * 3. Local development fallback
+ * 2. ORIGIN environment variable
+ * 3. Saved external URL from system settings
+ * 4. Local development fallback
  */
 export function getBaseURL(): string {
 	if (process.env.BETTER_AUTH_URL?.trim()) {
 		return normalizeUrl(process.env.BETTER_AUTH_URL);
+	}
+
+	if (process.env.ORIGIN?.trim()) {
+		return normalizeUrl(process.env.ORIGIN);
 	}
 
 	const externalUrl = getConfiguredExternalUrl();

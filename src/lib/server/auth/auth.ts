@@ -224,6 +224,11 @@ export const auth = betterAuth({
 			origins.push(process.env.BETTER_AUTH_URL);
 		}
 
+		// Add ORIGIN if set (common Docker/manual deployment configuration)
+		if (process.env.ORIGIN) {
+			origins.push(process.env.ORIGIN);
+		}
+
 		// Add additional trusted origins from comma-separated env var
 		if (process.env.BETTER_AUTH_TRUSTED_ORIGINS) {
 			const additional = process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(',').map((o) => o.trim());

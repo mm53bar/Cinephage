@@ -120,9 +120,12 @@ export async function getEffectiveScoringProfileId(providedProfileId?: string): 
 			.get();
 
 		if (!existingProfile) {
-			throw new ValidationError('Selected quality profile is no longer valid. Refresh and try again.', {
-				scoringProfileId: providedProfileId
-			});
+			throw new ValidationError(
+				'Selected quality profile is no longer valid. Refresh and try again.',
+				{
+					scoringProfileId: providedProfileId
+				}
+			);
 		}
 
 		return providedProfileId;

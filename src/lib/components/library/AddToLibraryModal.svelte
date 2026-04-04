@@ -3,6 +3,7 @@
 	import { toasts } from '$lib/stores/toast.svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import ModalWrapper from '$lib/components/ui/modal/ModalWrapper.svelte';
+	import { getResponseErrorMessage, readResponsePayload } from '$lib/utils/http';
 	import CommonOptions from './add/CommonOptions.svelte';
 	import { sortRootFoldersForMediaType } from '$lib/utils/root-folders.js';
 	import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
@@ -523,8 +524,8 @@
 			});
 
 			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || `Failed to add ${mediaType}`);
+				const payload = await readResponsePayload(response);
+				throw new Error(getResponseErrorMessage(payload, `Failed to add ${mediaType}`));
 			}
 
 			const result = await response.json();
@@ -574,8 +575,8 @@
 			});
 
 			if (!response.ok) {
-				const data = await response.json();
-				throw new Error(data.error || 'Failed to add collection');
+				const payload = await readResponsePayload(response);
+				throw new Error(getResponseErrorMessage(payload, 'Failed to add collection'));
 			}
 
 			const result = await response.json();

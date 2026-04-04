@@ -18,7 +18,7 @@ import {
 import { isLikelyAnimeMedia } from '$lib/shared/anime-classification.js';
 import { fetchAndStoreMovieAlternateTitles } from '$lib/server/services/AlternateTitleService.js';
 import { getLibraryEntityService } from '$lib/server/library/LibraryEntityService.js';
-import { ValidationError } from '$lib/errors';
+import { ValidationError, isAppError } from '$lib/errors';
 import { logger } from '$lib/logging';
 import { requireAuth } from '$lib/server/auth/authorization.js';
 
@@ -288,6 +288,29 @@ export const POST: RequestHandler = async (event) => {
 		});
 	} catch (error) {
 		logger.error('[API] Error adding movie', error instanceof Error ? error : undefined);
+
+		if (isAppError(error)) {
+			return json(
+				{
+					success: false,
+					...error.toJSON()
+				},
+				{ status: error.statusCode }
+			);
+		}
+
+		if (error instanceof Error && /FOREIGN KEY constraint failed/i.test(error.message)) {
+			return json(
+				{
+					success: false,
+					error:
+						'The selected root folder or one of its linked library settings is no longer valid. Refresh the page and try again.',
+					code: 'LIBRARY_CONFIGURATION_STALE'
+				},
+				{ status: 409 }
+			);
+		}
+
 		return json(
 			{
 				success: false,

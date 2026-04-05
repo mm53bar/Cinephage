@@ -16,7 +16,7 @@ import { logger } from '$lib/logging';
 import { LRUCache } from '../cache';
 import { STREAM_CACHE_TTL_MS, STREAM_CACHE_MAX_SIZE } from '../constants';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /** Minimum hit count before an entry is persisted to database */
 const PERSIST_HIT_THRESHOLD = 2;
@@ -92,16 +92,22 @@ export class PersistentStreamCache {
 			}
 
 			this.isWarmed = true;
-			logger.info('Stream cache warmed from database', {
-				loaded,
-				total: entries.length,
-				...streamLog
-			});
+			logger.info(
+				{
+					loaded,
+					total: entries.length,
+					...streamLog
+				},
+				'Stream cache warmed from database'
+			);
 		} catch (error) {
-			logger.error('Failed to warm stream cache from database', {
-				error: error instanceof Error ? error.message : String(error),
-				...streamLog
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					...streamLog
+				},
+				'Failed to warm stream cache from database'
+			);
 		}
 	}
 
@@ -212,16 +218,22 @@ export class PersistentStreamCache {
 			}
 
 			if (persisted > 0) {
-				logger.debug('Persisted popular cache entries to database', {
-					persisted,
-					...streamLog
-				});
+				logger.debug(
+					{
+						persisted,
+						...streamLog
+					},
+					'Persisted popular cache entries to database'
+				);
 			}
 		} catch (error) {
-			logger.error('Failed to persist cache entries', {
-				error: error instanceof Error ? error.message : String(error),
-				...streamLog
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					...streamLog
+				},
+				'Failed to persist cache entries'
+			);
 		}
 	}
 
@@ -282,16 +294,22 @@ export class PersistentStreamCache {
 					: 0;
 
 			if (deleted > 0) {
-				logger.debug('Cleaned up expired cache entries from database', {
-					deleted,
-					...streamLog
-				});
+				logger.debug(
+					{
+						deleted,
+						...streamLog
+					},
+					'Cleaned up expired cache entries from database'
+				);
 			}
 		} catch (error) {
-			logger.error('Failed to clean up expired cache entries', {
-				error: error instanceof Error ? error.message : String(error),
-				...streamLog
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					...streamLog
+				},
+				'Failed to clean up expired cache entries'
+			);
 		}
 	}
 

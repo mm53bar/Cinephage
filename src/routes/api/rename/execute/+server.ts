@@ -9,6 +9,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { RenamePreviewService } from '$lib/server/library/naming/RenamePreviewService';
 import { logger } from '$lib/logging';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 interface ExecuteRequest {
 	fileIds: string[];
@@ -25,7 +26,11 @@ interface ExecuteRequest {
  *   mediaType?: 'movie' | 'episode' | 'mixed' - Type of files (default: 'mixed')
  * }
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { request } = event;
 	try {
 		const body = (await request.json()) as ExecuteRequest;
 		const { fileIds, mediaType = 'mixed' } = body;
@@ -43,25 +48,34 @@ export const POST: RequestHandler = async ({ request }) => {
 			return json({ error: 'All fileIds must be strings' }, { status: 400 });
 		}
 
-		logger.info('[RenameExecute API] Starting rename execution', {
-			fileCount: fileIds.length,
-			mediaType
-		});
+		logger.info(
+			{
+				fileCount: fileIds.length,
+				mediaType
+			},
+			'[RenameExecute API] Starting rename execution'
+		);
 
 		const service = new RenamePreviewService();
 		const result = await service.executeRenames(fileIds, mediaType);
 
-		logger.info('[RenameExecute API] Rename execution complete', {
-			processed: result.processed,
-			succeeded: result.succeeded,
-			failed: result.failed
-		});
+		logger.info(
+			{
+				processed: result.processed,
+				succeeded: result.succeeded,
+				failed: result.failed
+			},
+			'[RenameExecute API] Rename execution complete'
+		);
 
 		return json(result);
 	} catch (error) {
-		logger.error('[RenameExecute API] Failed to execute renames', {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		logger.error(
+			{
+				error: error instanceof Error ? error.message : String(error)
+			},
+			'[RenameExecute API] Failed to execute renames'
+		);
 
 		return json(
 			{

@@ -1,8 +1,8 @@
 import type { Plugin } from 'vite';
-import devtoolsJson from 'vite-plugin-devtools-json';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { paraglideVitePlugin } from '@inlang/paraglide-js';
 
 /**
  * Vite plugin that triggers eager initialization in dev mode.
@@ -35,7 +35,16 @@ function eagerInitPlugin(): Plugin {
 }
 
 export default defineConfig({
-	plugins: [tailwindcss(), sveltekit(), devtoolsJson(), eagerInitPlugin()],
+	plugins: [
+		paraglideVitePlugin({
+			project: './project.inlang',
+			outdir: './src/lib/paraglide',
+			strategy: ['cookie', 'globalVariable', 'baseLocale']
+		}),
+		tailwindcss(),
+		sveltekit(),
+		eagerInitPlugin()
+	],
 	css: {
 		transformer: 'postcss'
 	},

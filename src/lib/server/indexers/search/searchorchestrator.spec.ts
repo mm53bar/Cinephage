@@ -88,6 +88,33 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		expect(formats).toContain('standard'); // S02 is standard format
 	});
 
+	it('ignores empty title variants and avoids season-0 keyword suffix variants', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const captured: any[] = [];
+
+		const fakeIndexer = {
+			name: 'FakeIndexer',
+			capabilities: mockCapabilities,
+			search: async (criteria: any) => {
+				captured.push(criteria);
+				return [];
+			}
+		} as any;
+
+		const criteria = {
+			searchType: 'tv',
+			query: 'One Piece',
+			searchTitles: ['One Piece', '', '   ', 'One Piece'],
+			season: 0
+		} as any;
+
+		await (orchestrator as any).executeMultiTitleTextSearch(fakeIndexer, criteria);
+
+		expect(captured).toHaveLength(1);
+		expect(captured[0].query).toBe('One Piece');
+		expect(captured[0].preferredEpisodeFormat).toBeUndefined();
+	});
+
 	it('uses title for movie searches without episode format', async () => {
 		const orchestrator = new SearchOrchestrator();
 		const captured: any[] = [];
@@ -117,6 +144,119 @@ describe('SearchOrchestrator.executeMultiTitleTextSearch', () => {
 		// and no-year variants for better cross-indexer compatibility.
 		expect(captured.some((c: any) => c.year === 1999)).toBe(true);
 		expect(captured.some((c: any) => c.year === undefined)).toBe(true);
+	});
+
+	it('adds title-only fallback variant for interactive TV episode searches', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const captured: any[] = [];
+
+		const fakeIndexer = {
+			name: 'FakeIndexer',
+			capabilities: mockCapabilities,
+			search: async (criteria: any) => {
+				captured.push(criteria);
+				return [];
+			}
+		} as any;
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			query: 'Stranger Things',
+			season: 2,
+			episode: 1
+		} as any;
+
+		await (orchestrator as any).executeMultiTitleTextSearch(fakeIndexer, criteria);
+
+		expect(captured.some((c: any) => c.preferredEpisodeFormat === 'standard')).toBe(true);
+		expect(
+			captured.some(
+				(c: any) =>
+					c.query === 'Stranger Things' &&
+					c.season === undefined &&
+					c.episode === undefined &&
+					c.preferredEpisodeFormat === undefined
+			)
+		).toBe(true);
+	});
+
+	it('reuses cached RuTracker season search results across automatic episode variants', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const captured: any[] = [];
+
+		const fakeIndexer = {
+			name: 'RuTracker.org',
+			baseUrl: 'https://rutracker.org/forum',
+			capabilities: mockCapabilities,
+			search: async (criteria: any) => {
+				captured.push(criteria);
+				return [];
+			}
+		} as any;
+
+		const baseCriteria = {
+			searchType: 'tv',
+			searchSource: 'automatic',
+			query: 'Stranger Things',
+			searchTitles: ['Stranger Things', '怪奇物语', 'Очень странные дела'],
+			season: 1
+		} as any;
+
+		await (orchestrator as any).executeMultiTitleTextSearch(fakeIndexer, {
+			...baseCriteria,
+			episode: 1
+		});
+		await (orchestrator as any).executeMultiTitleTextSearch(fakeIndexer, {
+			...baseCriteria,
+			episode: 2
+		});
+
+		// First call: two title variants (budgeted). Second call: served from cache.
+		expect(captured).toHaveLength(2);
+		expect(captured.every((c: any) => c.preferredEpisodeFormat === 'standard')).toBe(true);
+		expect(captured.every((c: any) => c.episode === undefined)).toBe(true);
+		expect(captured.every((c: any) => c.season === 1)).toBe(true);
+	});
+
+	it('dedupes concurrent RuTracker automatic season searches into a single in-flight request', async () => {
+		const orchestrator = new SearchOrchestrator();
+		const captured: any[] = [];
+
+		const fakeIndexer = {
+			name: 'RuTracker.org',
+			baseUrl: 'https://rutracker.org/forum',
+			capabilities: mockCapabilities,
+			search: async (criteria: any) => {
+				captured.push(criteria);
+				await new Promise((resolve) => setTimeout(resolve, 15));
+				return [];
+			}
+		} as any;
+
+		const baseCriteria = {
+			searchType: 'tv',
+			searchSource: 'automatic',
+			query: 'Stranger Things',
+			searchTitles: ['Stranger Things', '怪奇物语', 'Очень странные дела'],
+			season: 1
+		} as any;
+
+		await Promise.all([
+			(orchestrator as any).executeMultiTitleTextSearch(fakeIndexer, {
+				...baseCriteria,
+				episode: 1
+			}),
+			(orchestrator as any).executeMultiTitleTextSearch(fakeIndexer, {
+				...baseCriteria,
+				episode: 2
+			})
+		]);
+
+		// Budget is 2 titles; with in-flight dedupe concurrent calls should still issue only 2 variants total.
+		expect(captured).toHaveLength(2);
+		expect(captured.every((c: any) => c.preferredEpisodeFormat === 'standard')).toBe(true);
+		expect(captured.every((c: any) => c.episode === undefined)).toBe(true);
 	});
 });
 
@@ -400,7 +540,7 @@ describe('SearchOrchestrator.executeWithTiering', () => {
 describe('SearchOrchestrator.filterBySeasonEpisode', () => {
 	const orchestrator = new SearchOrchestrator();
 
-	it('excludes season packs for interactive season+episode search', () => {
+	it('prefers exact episode matches for interactive season+episode search', () => {
 		const releases = [
 			{ title: 'Smallville.S01E01.1080p.WEBRip' },
 			{ title: 'Smallville.S01.COMPLETE.1080p.BluRay' },
@@ -418,6 +558,64 @@ describe('SearchOrchestrator.filterBySeasonEpisode', () => {
 		const titles = filtered.map((r: any) => r.title);
 
 		expect(titles).toEqual(['Smallville.S01E01.1080p.WEBRip']);
+	});
+
+	it('falls back to single-season packs for interactive season+episode search when exact episode is missing', () => {
+		const releases = [
+			{ title: 'Smallville.S01.COMPLETE.1080p.BluRay' },
+			{ title: 'Smallville.S01-S05.1080p.BluRay' }
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			season: 1,
+			episode: 1
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria);
+		const titles = filtered.map((r: any) => r.title);
+		const guids = filtered.map((r: any) => r.guid ?? '');
+
+		expect(filtered).toHaveLength(1);
+		expect(titles[0]).toContain('Season 1 Episode 1 - ');
+		expect(titles[0]).toContain('Smallville.S01.COMPLETE.1080p.BluRay');
+		expect(guids[0]).toContain('episode-pointer::s01e01');
+		expect(filtered[0].season).toBe(1);
+		expect(filtered[0].episode).toBe(1);
+	});
+
+	it('keeps season-only interactive searches as season packs', () => {
+		const releases = [
+			{ title: 'Smallville.S01.COMPLETE.1080p.BluRay' },
+			{ title: 'Smallville.S01E01.1080p.WEBRip' }
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			season: 1
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toBe('Smallville.S01.COMPLETE.1080p.BluRay');
+	});
+
+	it('formats season-pack titles for season-only interactive searches', () => {
+		const releases = [{ title: '/ Stranger Things / S1E1-8 8 [2016, WEB-DL 2160p]' }] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			season: 1
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toBe('Stranger Things: S1E1-8 of 8 [2016, WEB-DL 2160p]');
 	});
 
 	it('keeps single-season packs for automatic season+episode search', () => {
@@ -440,6 +638,132 @@ describe('SearchOrchestrator.filterBySeasonEpisode', () => {
 		expect(titles).toEqual(
 			['Smallville.S01.COMPLETE.1080p.BluRay', 'Smallville.S01E01.1080p.WEBRip'].sort()
 		);
+	});
+
+	it('rejects incomplete RuTracker season packs for season-only searches', () => {
+		const releases = [
+			{
+				title: '/ Stranger Things / S1E1-8 8 [2016, WEB-DL 2160p]',
+				indexerName: 'RuTracker.org'
+			},
+			{
+				title: '/ Stranger Things / S1E1-6 8 [2016, WEB-DL 2160p]',
+				indexerName: 'RuTracker.org'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			season: 1
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria, {
+			seasonEpisodeCount: 8
+		});
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toBe('Stranger Things: S1E1-8 of 8 [2016, WEB-DL 2160p]');
+	});
+
+	it('rejects RuTracker packs that exceed target season episode count', () => {
+		const releases = [
+			{
+				title: 'The Vampire Diaries: S1E1-171 of 171 [2009-2017, BDRip] MVO (LostFilm)',
+				indexerName: 'RuTracker.org'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			season: 1
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria, {
+			seasonEpisodeCount: 22
+		});
+
+		expect(filtered).toHaveLength(0);
+	});
+
+	it('uses episode pointers for RuTracker season packs in automatic episode searches', () => {
+		const releases = [
+			{
+				title: '/ Stranger Things / S1E1-8 8 [2016, WEB-DL 2160p]',
+				indexerName: 'RuTracker.org',
+				guid: 'rutracker-pack'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'automatic',
+			season: 1,
+			episode: 8
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('Season 1 Episode 8 - ');
+		expect(filtered[0].guid).toContain('episode-pointer::s01e08');
+	});
+
+	it('returns RuTracker episode pointers only in interactive episode workflow', () => {
+		const releases = [
+			{
+				title: 'Stranger Things.S01E08.1080p.WEBRip',
+				indexerName: 'RuTracker.org',
+				guid: 'rutracker-exact'
+			},
+			{
+				title: '/ Stranger Things / S1E1-8 8 [2016, WEB-DL 2160p]',
+				indexerName: 'RuTracker.org',
+				guid: 'rutracker-pack'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			season: 1,
+			episode: 8
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].guid).toContain('episode-pointer::s01e08');
+		expect(filtered[0].title).toContain('Season 1 Episode 8 - ');
+	});
+
+	it('returns RuTracker episode pointers only in automatic episode workflow', () => {
+		const releases = [
+			{
+				title: 'Stranger Things.S01E08.1080p.WEBRip',
+				indexerName: 'RuTracker.org',
+				guid: 'rutracker-exact'
+			},
+			{
+				title: '/ Stranger Things / S1E1-8 8 [2016, WEB-DL 2160p]',
+				indexerName: 'RuTracker.org',
+				guid: 'rutracker-pack'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'automatic',
+			season: 1,
+			episode: 8
+		} as any;
+
+		const filtered = (orchestrator as any).filterBySeasonEpisode(releases, criteria);
+
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].guid).toContain('episode-pointer::s01e08');
+		expect(filtered[0].title).toContain('Season 1 Episode 8 - ');
 	});
 });
 
@@ -485,5 +809,252 @@ describe('SearchOrchestrator.filterByIdOrTitleMatch', () => {
 		const filtered = (orchestrator as any).filterByIdOrTitleMatch(releases, criteria);
 		expect(filtered).toHaveLength(1);
 		expect(filtered[0].title).toBe('Now.You.See.Me.Now.You.Dont.1080p.WEB-DL.REPACK');
+	});
+
+	it('keeps interactive movie results when title is localized and year is missing', () => {
+		const releases = [{ title: 'Военная машина WEB-DL', indexerName: 'FakeIndexer' }] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			searchSource: 'interactive',
+			query: 'War Machine',
+			searchTitles: ['War Machine'],
+			year: 2017
+		} as any;
+
+		const filtered = (orchestrator as any).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toBe('Военная машина WEB-DL');
+	});
+
+	it('keeps interactive movie results when title is transliterated and year matches', () => {
+		const releases = [
+			{
+				title: 'Osobennosti nacionalnoy ohoty [1995, Russia, comedy, DVDRip]',
+				indexerName: 'FakeIndexer'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			searchSource: 'interactive',
+			query: 'Peculiarities of the National Hunt',
+			searchTitles: ['Peculiarities of the National Hunt'],
+			year: 1995
+		} as any;
+
+		const filtered = (orchestrator as any).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('Osobennosti nacionalnoy ohoty');
+	});
+
+	it('keeps automatic filtering strict for localized title mismatch', () => {
+		const releases = [{ title: 'Военная машина WEB-DL', indexerName: 'FakeIndexer' }] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			searchSource: 'automatic',
+			query: 'War Machine',
+			searchTitles: ['War Machine'],
+			year: 2017
+		} as any;
+
+		const filtered = (orchestrator as any).filterByIdOrTitleMatch(releases, criteria);
+		expect(filtered).toHaveLength(0);
+	});
+});
+
+describe('SearchOrchestrator.filterOutNonVideoArtifacts', () => {
+	const orchestrator = new SearchOrchestrator();
+
+	it('rejects soundtrack/audio collection releases for movie searches', () => {
+		const releases = [
+			{
+				title: '(Score, Soundtrack) [CD] The Matrix Soundtrack Collection'
+			},
+			{
+				title: 'The.Matrix.1999.1080p.BluRay.x264'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			query: 'The Matrix'
+		} as any;
+
+		const filtered = (orchestrator as any).filterOutNonVideoArtifacts(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toBe('The.Matrix.1999.1080p.BluRay.x264');
+	});
+
+	it('keeps video releases even when title contains ambiguous words', () => {
+		const releases = [
+			{
+				title: 'The.Score.2001.1080p.BluRay.x264'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			query: 'The Score'
+		} as any;
+
+		const filtered = (orchestrator as any).filterOutNonVideoArtifacts(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toBe('The.Score.2001.1080p.BluRay.x264');
+	});
+
+	it('does not apply non-video artifact filter to music searches', () => {
+		const releases = [
+			{
+				title: 'The Matrix Soundtrack OST FLAC'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'music',
+			query: 'The Matrix Soundtrack'
+		} as any;
+
+		const filtered = (orchestrator as any).filterOutNonVideoArtifacts(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toBe('The Matrix Soundtrack OST FLAC');
+	});
+});
+
+describe('SearchOrchestrator.filterByTitleRelevance', () => {
+	const orchestrator = new SearchOrchestrator();
+
+	it('keeps tracker titles that contain the expected movie title plus extra metadata', () => {
+		const releases = [
+			{
+				title:
+					'War Machine (Patrick Hughes) [2026, UK, Australia, New Zealand, USA, sci-fi, action, WEB-DLRip] Dub + Sub (Rus, Eng)'
+			},
+			{
+				title: 'Completely Different Movie [2026, USA, WEB-DLRip]'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			query: 'War Machine',
+			searchTitles: ['War Machine', 'Máquina de Guerra']
+		} as any;
+
+		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('War Machine');
+	});
+
+	it('matches localized unicode movie titles when expected title is localized', () => {
+		const releases = [
+			{
+				title: 'Особенности национальной охоты [1995, комедия, DVDRip]'
+			},
+			{
+				title: 'Другой фильм [1995, драма, DVDRip]'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			query: 'Особенности национальной охоты',
+			searchTitles: ['Особенности национальной охоты']
+		} as any;
+
+		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('Особенности национальной охоты');
+	});
+
+	it('falls back to pre-filtered releases for interactive movie when localization mismatches', () => {
+		const releases = [{ title: 'Osobennosti nacionalnoy ohoty [1995, comedy, DVDRip]' }] as any[];
+
+		const criteria = {
+			searchType: 'movie',
+			searchSource: 'interactive',
+			query: 'Peculiarities of the National Hunt',
+			searchTitles: ['Peculiarities of the National Hunt']
+		} as any;
+
+		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered).toEqual(releases);
+	});
+
+	it('keeps TV releases with long tracker metadata when series title matches', () => {
+		const releases = [
+			{
+				title: 'The Night Agent / Ночной агент S03E10 [2026, WEB-DL 1080p, Dub, Sub Rus, Eng]'
+			},
+			{
+				title: 'Different Show S03E10 [2026, WEB-DL 1080p]'
+			}
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			query: 'The Night Agent',
+			searchTitles: ['The Night Agent']
+		} as any;
+
+		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
+		expect(filtered).toHaveLength(1);
+		expect(filtered[0].title).toContain('The Night Agent');
+	});
+
+	it('falls back to pre-filtered releases for interactive TV when relevance removes all', () => {
+		const releases = [
+			{ title: 'Совсем другой сериал S01E01 [2026, WEB-DL 1080p]' },
+			{ title: 'Не связано S01E02 [2026, WEB-DL 1080p]' }
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			query: 'The Night Agent',
+			searchTitles: ['The Night Agent', 'Gecə Agenti']
+		} as any;
+
+		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
+		expect(filtered).toHaveLength(2);
+		expect(filtered).toEqual(releases);
+	});
+
+	it('keeps episode-targeted TV searches strict and does not fallback to unrelated results', () => {
+		const releases = [
+			{ title: 'Совсем другой сериал S01E01 [2026, WEB-DL 1080p]' },
+			{ title: 'Не связано S01E02 [2026, WEB-DL 1080p]' }
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'interactive',
+			query: 'The Night Agent',
+			searchTitles: ['The Night Agent', 'Gecə Agenti'],
+			season: 1,
+			episode: 2
+		} as any;
+
+		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
+		expect(filtered).toHaveLength(0);
+	});
+
+	it('keeps automatic TV title relevance strict when no titles match', () => {
+		const releases = [
+			{ title: 'Completely Different Show S01E01 [2026, WEB-DL 1080p]' },
+			{ title: 'Not Related Series S01E02 [2026, WEB-DL 1080p]' }
+		] as any[];
+
+		const criteria = {
+			searchType: 'tv',
+			searchSource: 'automatic',
+			query: 'The Night Agent',
+			searchTitles: ['The Night Agent', 'Gecə Agenti']
+		} as any;
+
+		const filtered = (orchestrator as any).filterByTitleRelevance(releases, criteria);
+		expect(filtered).toHaveLength(0);
 	});
 });

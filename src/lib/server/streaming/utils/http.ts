@@ -9,9 +9,10 @@ import {
 	DEFAULT_USER_AGENT,
 	AVAILABILITY_CHECK_TIMEOUT_MS
 } from '../constants';
-import type { StreamSubtitle } from '../types/stream';
+import type { StreamSubtitle } from '../types';
 import { injectSubtitles, isMasterPlaylist } from './subtitle-injection';
 import { rewriteHlsPlaylistUrls } from './hls-rewrite.js';
+import { fetchWithCloudflareBypass } from './cloudflare-streaming';
 
 export interface FetchOptions {
 	/** Request timeout in milliseconds */
@@ -173,20 +174,26 @@ export async function fetchPlaylist(url: string): Promise<Response> {
  * @param playlistUrl - The original URL of this playlist (for resolving relative URLs)
  * @param proxyBaseUrl - The base URL of our proxy (e.g., https://example.com)
  * @param referer - The referer header to use for proxied requests
+ * @param apiKey - Optional API key for authentication (required for streaming endpoints)
  * @returns Rewritten playlist content
  */
 export function rewritePlaylistUrls(
 	playlist: string,
 	playlistUrl: string,
 	proxyBaseUrl: string,
-	referer: string
+	referer: string,
+	apiKey?: string
 ): string {
 	return rewriteHlsPlaylistUrls(
 		playlist,
 		playlistUrl,
 		(absoluteUrl: string, isSegment: boolean): string => {
 			const extension = isSegment ? 'ts' : 'm3u8';
-			return `${proxyBaseUrl}/api/streaming/proxy/segment.${extension}?url=${encodeURIComponent(absoluteUrl)}&referer=${encodeURIComponent(referer)}`;
+			let url = `${proxyBaseUrl}/api/streaming/proxy/segment.${extension}?url=${encodeURIComponent(absoluteUrl)}&referer=${encodeURIComponent(referer)}`;
+			if (apiKey) {
+				url += `&api_key=${encodeURIComponent(apiKey)}`;
+			}
+			return url;
 		}
 	);
 }
@@ -255,19 +262,22 @@ export function ensureVodPlaylist(playlist: string): string {
  * @param referer - Referer header for the request
  * @param proxyBaseUrl - Our server's base URL for proxy URLs
  * @param subtitles - Optional subtitle tracks to inject into master playlists
+ * @param apiKey - Optional API key for authentication (required for streaming endpoints)
  * @returns Response with rewritten playlist content
  */
 export async function fetchAndRewritePlaylist(
 	playlistUrl: string,
 	referer: string,
 	proxyBaseUrl: string,
-	subtitles?: StreamSubtitle[]
+	subtitles?: StreamSubtitle[],
+	apiKey?: string
 ): Promise<Response> {
 	// Fetch the playlist directly with proper headers
 	// Note: Don't send Origin header - some CDNs reject it
-	const response = await fetchWithTimeout(playlistUrl, {
+	// Use Cloudflare bypass for streaming URLs
+	const response = await fetchWithCloudflareBypass(playlistUrl, {
 		referer,
-		timeout: 8000,
+		timeout: 15000, // Increased timeout for Cloudflare bypass
 		headers: {
 			Accept: '*/*'
 		}
@@ -285,11 +295,11 @@ export async function fetchAndRewritePlaylist(
 	}
 
 	// Rewrite URLs to use our proxy
-	content = rewritePlaylistUrls(content, playlistUrl, proxyBaseUrl, referer);
+	content = rewritePlaylistUrls(content, playlistUrl, proxyBaseUrl, referer, apiKey);
 
 	// Inject subtitles into master playlists
 	if (subtitles?.length && isMasterPlaylist(content)) {
-		content = injectSubtitles(content, subtitles, proxyBaseUrl, referer);
+		content = injectSubtitles(content, subtitles, proxyBaseUrl, referer, apiKey);
 	}
 
 	// Ensure VOD markers for media playlists

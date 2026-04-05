@@ -1,23 +1,23 @@
 /**
  * Stream Resolve Service
  *
- * Unified service for resolving streams from providers.
+ * Unified service for resolving streams from the Cinephage backend.
  * Features:
- * - Computes metadata requirements based on enabled providers
- * - Fetches only required metadata in parallel
- * - Uses first-success-wins extraction pattern
+ * - Uses the built-in `cinephage-stream` indexer configuration
+ * - Resolves streams from the Cinephage API
+ * - Uses first-success-wins validation
  * - Handles language preference filtering
  * - Caches successful stream results
  */
 
 import { logger } from '$lib/logging';
+import { getCinephageBackendClient } from '$lib/server/indexers/streaming/CinephageBackendClient';
 import { streamCache } from './cache';
-import { getAvailableProviders } from './providers';
-import { filterStreamsByLanguage } from './providers/language-utils';
-import type { StreamSource, StreamSubtitle } from './types/stream';
+import { filterStreamsByLanguage } from './language-utils';
+import type { StreamSource, StreamSubtitle, StreamType } from './types';
 import { fetchAndRewritePlaylist } from './utils';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /** Parameters for stream resolution */
 export interface ResolveParams {
@@ -26,29 +26,15 @@ export interface ResolveParams {
 	season?: number;
 	episode?: number;
 	baseUrl: string;
+	apiKey?: string;
 }
 
 /** Cached stream data including subtitles */
 interface CachedStream {
 	rawUrl: string;
 	referer: string;
+	type: StreamType;
 	subtitles?: StreamSubtitle[];
-}
-
-/** Metadata fetched from TMDB */
-interface TmdbMetadata {
-	imdbId?: string;
-	title?: string;
-	year?: number;
-	alternativeTitles?: string[];
-}
-
-/** Result of metadata requirements computation */
-interface MetadataNeeds {
-	imdbId: boolean;
-	title: boolean;
-	year: boolean;
-	alternativeTitles: boolean;
 }
 
 /**
@@ -62,144 +48,14 @@ function errorResponse(message: string, code: string, status: number): Response 
 }
 
 /**
- * Compute what metadata is needed based on enabled providers
+ * Build a proxied response for direct file streams such as MP4.
  */
-function computeMetadataNeeds(): MetadataNeeds {
-	const providers = getAvailableProviders().filter((p) => p.config.enabledByDefault);
+function createDirectStreamResponse(url: string, baseUrl: string, referer: string): Response {
+	const proxyUrl = new URL('/api/streaming/proxy/direct.mp4', baseUrl);
+	proxyUrl.searchParams.set('url', url);
+	proxyUrl.searchParams.set('referer', referer);
 
-	const needs: MetadataNeeds = {
-		imdbId: false,
-		title: false,
-		year: false,
-		alternativeTitles: false
-	};
-
-	for (const provider of providers) {
-		const req = provider.config.requirements;
-		if (req.imdbId) needs.imdbId = true;
-		if (req.title) needs.title = true;
-		if (req.year) needs.year = true;
-		if (req.alternativeTitles) needs.alternativeTitles = true;
-	}
-
-	return needs;
-}
-
-/**
- * Fetch TMDB metadata for a movie
- */
-async function fetchMovieMetadata(tmdbId: number, needs: MetadataNeeds): Promise<TmdbMetadata> {
-	const metadata: TmdbMetadata = {};
-
-	// Skip if we don't need any metadata
-	if (!needs.imdbId && !needs.title && !needs.year) {
-		return metadata;
-	}
-
-	try {
-		const { tmdb } = await import('$lib/server/tmdb');
-
-		// Fetch what we need in parallel
-		const promises: Promise<void>[] = [];
-
-		if (needs.imdbId) {
-			promises.push(
-				tmdb
-					.getMovieExternalIds(tmdbId)
-					.then((externalIds) => {
-						metadata.imdbId = externalIds.imdb_id || undefined;
-					})
-					.catch(() => {
-						/* ignore */
-					})
-			);
-		}
-
-		if (needs.title || needs.year) {
-			promises.push(
-				tmdb
-					.getMovie(tmdbId)
-					.then((movieDetails) => {
-						metadata.title = movieDetails.title;
-						metadata.year = movieDetails.release_date
-							? parseInt(movieDetails.release_date.substring(0, 4), 10)
-							: undefined;
-					})
-					.catch(() => {
-						/* ignore */
-					})
-			);
-		}
-
-		await Promise.all(promises);
-	} catch {
-		// TMDB lookup failed entirely
-	}
-
-	return metadata;
-}
-
-/**
- * Fetch TMDB metadata for a TV show
- */
-async function fetchTvMetadata(tmdbId: number, needs: MetadataNeeds): Promise<TmdbMetadata> {
-	const metadata: TmdbMetadata = {};
-
-	// Skip if we don't need any metadata
-	if (!needs.imdbId && !needs.title && !needs.year && !needs.alternativeTitles) {
-		return metadata;
-	}
-
-	try {
-		const { tmdb } = await import('$lib/server/tmdb');
-
-		// Fetch what we need in parallel
-		const promises: Promise<void>[] = [];
-
-		if (needs.imdbId) {
-			promises.push(
-				tmdb
-					.getTvExternalIds(tmdbId)
-					.then((externalIds) => {
-						metadata.imdbId = externalIds.imdb_id || undefined;
-					})
-					.catch(() => {
-						/* ignore */
-					})
-			);
-		}
-
-		if (needs.title || needs.year || needs.alternativeTitles) {
-			promises.push(
-				tmdb
-					.getTVShow(tmdbId)
-					.then((showDetails) => {
-						metadata.title = showDetails.name;
-						metadata.year = showDetails.first_air_date
-							? parseInt(showDetails.first_air_date.substring(0, 4), 10)
-							: undefined;
-
-						// Use original name as alternative title if different
-						if (
-							needs.alternativeTitles &&
-							showDetails.original_name &&
-							showDetails.original_name !== showDetails.name
-						) {
-							metadata.alternativeTitles = [showDetails.original_name];
-						}
-					})
-					.catch(() => {
-						/* ignore */
-					})
-			);
-		}
-
-		await Promise.all(promises);
-	} catch {
-		// TMDB lookup failed entirely
-	}
-
-	return metadata;
+	return Response.redirect(proxyUrl.toString(), 307);
 }
 
 /**
@@ -240,7 +96,8 @@ type SourceValidationOutcome = SourceValidationResult | SourceValidationFailure;
 async function tryStreamSources(
 	sources: StreamSource[],
 	baseUrl: string,
-	cacheKey: string
+	cacheKey: string,
+	apiKey?: string
 ): Promise<{ response: Response; source: StreamSource } | null> {
 	if (sources.length === 0) {
 		return null;
@@ -251,13 +108,23 @@ async function tryStreamSources(
 	// Validate all sources in parallel
 	const validationPromises = sources.map(async (source): Promise<SourceValidationOutcome> => {
 		try {
+			if (source.type === 'mp4') {
+				return {
+					success: true,
+					response: createDirectStreamResponse(source.url, baseUrl, source.referer),
+					source,
+					rawUrl: source.url
+				};
+			}
+
 			const bestResult = await getBestQuality(source.url, source.referer);
 
 			const response = await fetchAndRewritePlaylist(
 				bestResult.rawUrl,
 				source.referer,
 				baseUrl,
-				source.subtitles
+				source.subtitles,
+				apiKey
 			);
 
 			return { success: true, response, source, rawUrl: bestResult.rawUrl };
@@ -282,18 +149,22 @@ async function tryStreamSources(
 
 					// Log subtitle availability
 					if (outcome.source.subtitles?.length) {
-						logger.info('Stream has subtitles', {
-							provider: outcome.source.provider,
-							subtitleCount: outcome.source.subtitles.length,
-							languages: outcome.source.subtitles.map((s) => s.language),
-							...streamLog
-						});
+						logger.info(
+							{
+								provider: outcome.source.provider,
+								subtitleCount: outcome.source.subtitles.length,
+								languages: outcome.source.subtitles.map((s) => s.language),
+								...streamLog
+							},
+							'Stream has subtitles'
+						);
 					}
 
 					// Cache the successful stream
 					const cacheData: CachedStream = {
 						rawUrl: outcome.rawUrl,
 						referer: outcome.source.referer,
+						type: outcome.source.type,
 						subtitles: outcome.source.subtitles
 					};
 					streamCache.set(cacheKey, JSON.stringify(cacheData));
@@ -325,10 +196,8 @@ async function tryStreamSources(
  * 6. Returns first working stream
  */
 export async function resolveStream(params: ResolveParams): Promise<Response> {
-	const { tmdbId, type, season, episode, baseUrl } = params;
-
-	// Dynamic import to avoid circular dependencies
-	const { extractStreams } = await import('./providers');
+	const { tmdbId, type, season, episode, baseUrl, apiKey } = params;
+	const cinephageBackend = getCinephageBackendClient();
 
 	// Compute cache key
 	const cacheKey =
@@ -341,53 +210,38 @@ export async function resolveStream(params: ResolveParams): Promise<Response> {
 	if (cachedJson) {
 		try {
 			const cached = JSON.parse(cachedJson) as CachedStream;
-			logger.debug('Cache hit for stream', { cacheKey, ...streamLog });
+			logger.debug({ cacheKey, ...streamLog }, 'Cache hit for stream');
+
+			if (cached.type === 'mp4') {
+				return createDirectStreamResponse(cached.rawUrl, baseUrl, cached.referer);
+			}
+
 			return await fetchAndRewritePlaylist(
 				cached.rawUrl,
 				cached.referer,
 				baseUrl,
-				cached.subtitles
+				cached.subtitles,
+				apiKey
 			);
 		} catch {
 			// Invalid cache entry, continue with extraction
 		}
 	}
 
-	// Compute what metadata we need based on enabled providers
-	const needs = computeMetadataNeeds();
-
-	logger.debug('Metadata needs computed', {
-		tmdbId,
-		type,
-		needs,
-		...streamLog
-	});
-
-	// Fetch required metadata in parallel
-	const metadata =
-		type === 'movie'
-			? await fetchMovieMetadata(tmdbId, needs)
-			: await fetchTvMetadata(tmdbId, needs);
-
 	// Get preferred languages
 	const preferredLanguages = await getPreferredLanguages(tmdbId, type);
 
-	// Extract streams from providers
-	const result = await extractStreams({
-		tmdbId: tmdbId.toString(),
+	// Resolve streams from the Cinephage backend
+	const result = await cinephageBackend.getStreams({
+		tmdbId,
 		type,
 		season,
-		episode,
-		imdbId: metadata.imdbId,
-		title: metadata.title,
-		year: metadata.year,
-		alternativeTitles: metadata.alternativeTitles,
-		preferredLanguages
+		episode
 	});
 
 	if (!result.success || result.sources.length === 0) {
 		return errorResponse(
-			`Stream extraction failed: ${result.error || 'No sources found'}`,
+			`Stream resolution failed: ${result.error || 'No sources found'}`,
 			'EXTRACTION_FAILED',
 			503
 		);
@@ -396,45 +250,57 @@ export async function resolveStream(params: ResolveParams): Promise<Response> {
 	// Filter streams by language preference
 	const { matching, fallback } = filterStreamsByLanguage(result.sources, preferredLanguages);
 
-	logger.debug('Stream sources by language', {
-		tmdbId,
-		type,
-		preferredLanguages,
-		matchingCount: matching.length,
-		fallbackCount: fallback.length,
-		...streamLog
-	});
+	logger.debug(
+		{
+			tmdbId,
+			type,
+			preferredLanguages,
+			matchingCount: matching.length,
+			fallbackCount: fallback.length,
+			...streamLog
+		},
+		'Stream sources by language'
+	);
 
 	// Try matching language streams first
-	const matchingResult = await tryStreamSources(matching, baseUrl, cacheKey);
+	const matchingResult = await tryStreamSources(matching, baseUrl, cacheKey, apiKey);
 	if (matchingResult) {
-		logger.info('Using stream source', {
-			provider: matchingResult.source.provider,
-			server: matchingResult.source.server,
-			language: matchingResult.source.language,
-			quality: matchingResult.source.quality,
-			hasSubtitles: (matchingResult.source.subtitles?.length ?? 0) > 0,
-			...streamLog
-		});
+		logger.info(
+			{
+				provider: matchingResult.source.provider,
+				server: matchingResult.source.server,
+				language: matchingResult.source.language,
+				quality: matchingResult.source.quality,
+				hasSubtitles: (matchingResult.source.subtitles?.length ?? 0) > 0,
+				...streamLog
+			},
+			'Using stream source'
+		);
 		return matchingResult.response;
 	}
 
 	// Try fallback streams if matching failed
 	if (fallback.length > 0) {
-		logger.warn('No matching language streams worked, trying fallback', {
-			tmdbId,
-			preferredLanguages,
-			triedMatching: matching.length,
-			...streamLog
-		});
-
-		const fallbackResult = await tryStreamSources(fallback, baseUrl, cacheKey);
-		if (fallbackResult) {
-			logger.info('Using fallback language stream', {
-				provider: fallbackResult.source.provider,
-				language: fallbackResult.source.language,
+		logger.warn(
+			{
+				tmdbId,
+				preferredLanguages,
+				triedMatching: matching.length,
 				...streamLog
-			});
+			},
+			'No matching language streams worked, trying fallback'
+		);
+
+		const fallbackResult = await tryStreamSources(fallback, baseUrl, cacheKey, apiKey);
+		if (fallbackResult) {
+			logger.info(
+				{
+					provider: fallbackResult.source.provider,
+					language: fallbackResult.source.language,
+					...streamLog
+				},
+				'Using fallback language stream'
+			);
 			return fallbackResult.response;
 		}
 	}

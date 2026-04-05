@@ -20,8 +20,7 @@ import { eq } from 'drizzle-orm';
 initTestDb();
 
 // Must mock before importing the handlers
-vi.mock('$lib/server/db', async () => {
-	const { getTestDb } = await import('../../../test/db-helper');
+vi.mock('$lib/server/db', () => {
 	return {
 		get db() {
 			return getTestDb().db;
@@ -33,13 +32,17 @@ vi.mock('$lib/server/db', async () => {
 	};
 });
 
+const mockLogger = vi.hoisted(() => ({
+	info: vi.fn(),
+	error: vi.fn(),
+	warn: vi.fn(),
+	debug: vi.fn(),
+	child: vi.fn().mockReturnThis()
+}));
+
 vi.mock('$lib/logging', () => ({
-	logger: {
-		info: vi.fn(),
-		error: vi.fn(),
-		warn: vi.fn(),
-		debug: vi.fn()
-	}
+	logger: mockLogger,
+	createChildLogger: vi.fn(() => mockLogger)
 }));
 
 // Import handlers after mocks are set up

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import * as m from '$lib/paraglide/messages.js';
 	import { SvelteSet, SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
 	import {
 		X,
@@ -95,6 +96,10 @@
 		rejectedIndexers?: RejectedIndexer[];
 	}
 
+	interface NntpServerStatus {
+		enabled?: boolean;
+	}
+
 	export type SearchMode = 'all' | 'multiSeasonPack';
 
 	interface Props {
@@ -103,6 +108,7 @@
 		tmdbId?: number;
 		imdbId?: string | null;
 		tvdbId?: number | null;
+		expectedEpisodeCount?: number | null;
 		year?: number | null;
 		mediaType: 'movie' | 'tv';
 		scoringProfileId?: string | null;
@@ -113,7 +119,7 @@
 		onGrab: (
 			release: Release,
 			streaming?: boolean
-		) => Promise<{ success: boolean; error?: string }>;
+		) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
 	}
 
 	let {
@@ -122,6 +128,7 @@
 		tmdbId,
 		imdbId,
 		tvdbId,
+		expectedEpisodeCount,
 		year,
 		mediaType,
 		scoringProfileId,
@@ -142,6 +149,9 @@
 	let streamingIds = new SvelteSet<string>();
 	let grabErrors = new SvelteMap<string, string>();
 	let searchTriggered = $state(false);
+	let usenetStreamingState = $state<
+		'unknown' | 'available' | 'noConfiguredServers' | 'noEnabledServers' | 'unavailable'
+	>('unknown');
 
 	// Sorting
 	let sortBy = $state<'score' | 'seeders' | 'size' | 'age'>('score');
@@ -191,8 +201,70 @@
 		return `${release.guid}-${release.indexerId}`;
 	}
 
+	async function loadUsenetStreamingAvailability() {
+		try {
+			usenetStreamingState = 'unknown';
+			const response = await fetch('/api/usenet/servers');
+
+			if (!response.ok) {
+				usenetStreamingState = 'unavailable';
+				return;
+			}
+
+			const servers = (await response.json()) as NntpServerStatus[];
+
+			if (servers.length === 0) {
+				usenetStreamingState = 'noConfiguredServers';
+				return;
+			}
+
+			if (!servers.some((server) => server.enabled)) {
+				usenetStreamingState = 'noEnabledServers';
+				return;
+			}
+
+			usenetStreamingState = 'available';
+		} catch {
+			usenetStreamingState = 'unavailable';
+		}
+	}
+
+	function getGrabErrorMessage(errorCode?: string, error?: string): string {
+		switch (errorCode) {
+			case 'NNTP_NOT_CONFIGURED':
+				return 'No NNTP server configured. Add one in Settings -> Integrations -> NNTP Servers.';
+			case 'NNTP_NOT_ENABLED':
+				return 'No enabled NNTP server. Enable at least one server to use Stream.';
+			case 'NNTP_UNAVAILABLE':
+				return 'NNTP streaming is unavailable right now. Check NNTP server connectivity.';
+			case 'NO_ENABLED_DOWNLOAD_CLIENT':
+				return 'No enabled download client is configured for this protocol.';
+			default:
+				return error || 'Failed to grab';
+		}
+	}
+
+	const showUsenetStreamButton = $derived.by(() => usenetStreamingState !== 'noConfiguredServers');
+	const canUsenetStream = $derived.by(() => usenetStreamingState === 'available');
+	const usenetStreamUnavailableReason = $derived.by(() => {
+		switch (usenetStreamingState) {
+			case 'unknown':
+				return 'Checking NNTP server availability...';
+			case 'noEnabledServers':
+				return 'NNTP servers are configured but disabled. Enable one to stream.';
+			case 'unavailable':
+				return 'Unable to verify NNTP server status right now.';
+			default:
+				return null;
+		}
+	});
+
 	// Helper to check if a release is a multi-season pack
 	function isMultiSeasonPack(release: Release): boolean {
+		const largeEpisodeThreshold = expectedEpisodeCount
+			? Math.max(50, Math.floor(expectedEpisodeCount * 0.8))
+			: 70;
+
 		// Check episodeMatch first (from enhanced search results)
 		const episodeMatch = release.episodeMatch;
 		if (episodeMatch) {
@@ -200,6 +272,14 @@
 			if (episodeMatch.isCompleteSeries) return true;
 			// Multiple seasons in the array
 			if (episodeMatch.seasons && episodeMatch.seasons.length > 1) return true;
+			// Trackers may encode multi-season packs as S1E1-171 style ranges.
+			if (
+				episodeMatch.isSeasonPack &&
+				episodeMatch.season === 1 &&
+				(episodeMatch.episodes?.length ?? 0) >= largeEpisodeThreshold
+			) {
+				return true;
+			}
 		}
 
 		// Fall back to parsed.episode info
@@ -207,7 +287,51 @@
 		if (episodeInfo) {
 			if (episodeInfo.isCompleteSeries) return true;
 			if (episodeInfo.seasons && episodeInfo.seasons.length > 1) return true;
+			// Tracker fallback: some complete/multi-season packs are encoded as S1E1-171.
+			// Treat very large season-1 episode spans as multi-pack candidates.
+			if (
+				episodeInfo.isSeasonPack &&
+				episodeInfo.season === 1 &&
+				(episodeInfo.episodes?.length ?? 0) >= largeEpisodeThreshold
+			) {
+				return true;
+			}
 		}
+
+		// Title-based fallback for tracker formats where parser metadata may be incomplete
+		const title = release.title;
+		if (/\bS\d{1,2}[\s._-]*[-–—][\s._-]*S?\d{1,2}\b/i.test(title)) return true;
+		if (/\bS\d{1,2}[\s._-]?E\d{1,3}\s*[-–—]\s*S\d{1,2}[\s._-]?E\d{1,3}\b/i.test(title)) return true;
+		if (/\b\d{1,2}x\d{1,3}\s*[-–—]\s*\d{1,2}x\d{1,3}\b/i.test(title)) return true;
+		if (
+			/\bSeasons?[\s:._-]*\d{1,2}\s*(?:[-–—]|to|through|thru)\s*\d{1,2}(?:\s*(?:of|\/)\s*\d{1,2})?\b/i.test(
+				title
+			)
+		)
+			return true;
+		if (
+			/\bСезоны?[\s:._-]*\d{1,2}\s*(?:[-–—]|до)\s*\d{1,2}(?:\s*(?:из|of|\/)\s*\d{1,2})?\b/i.test(
+				title
+			)
+		)
+			return true;
+		if (
+			/\b(?:every[\s._-]?season|all[\s._-]?seasons?|полный[\s._-]*сериал|все[\s._-]*сезоны)\b/i.test(
+				title
+			)
+		)
+			return true;
+
+		// Guardrail for generic words like "collection"/"bundle": require TV context nearby.
+		const hasTvContext =
+			/\b(?:series|seasons?|episodes?|s\d{1,2}(?:e\d{1,3})?|(?:\d{1,2})x\d{1,3})\b/i.test(title);
+		if (
+			hasTvContext &&
+			/\b(?:complete[\s._-]?collection|full[\s._-]?collection|mega[\s._-]?pack|bundle)\b/i.test(
+				title
+			)
+		)
+			return true;
 
 		return false;
 	}
@@ -263,6 +387,8 @@
 		return releases;
 	});
 
+	const rawReleaseCount = $derived.by(() => releases.length);
+
 	const modeRejectedCount = $derived.by(() => modeBaseReleases.filter((r) => r.rejected).length);
 
 	const reportedIndexerResults = $derived.by(() => {
@@ -283,6 +409,7 @@
 		return Object.entries(meta.indexerResults).map(([indexerId, result]) => ({
 			indexerId,
 			...result,
+			rawCount: result.count,
 			displayCount:
 				searchMode === 'multiSeasonPack' ? (modeCountsByIndexer.get(indexerId) ?? 0) : result.count
 		}));
@@ -292,7 +419,8 @@
 	$effect(() => {
 		if (open && releases.length === 0 && !searching && !searchTriggered) {
 			searchTriggered = true;
-			performSearch();
+			void loadUsenetStreamingAvailability();
+			void performSearch();
 		}
 	});
 
@@ -309,6 +437,7 @@
 			grabErrors.clear();
 			filterQuery = '';
 			searchTriggered = false;
+			usenetStreamingState = 'unknown';
 		}
 	});
 
@@ -322,6 +451,8 @@
 				enrich: 'true',
 				filterRejected: 'false' // Keep rejected for display, but mark them
 			});
+
+			if (searchMode) params.set('searchMode', searchMode);
 
 			if (tmdbId) params.set('tmdbId', tmdbId.toString());
 			if (imdbId) params.set('imdbId', imdbId);
@@ -353,6 +484,12 @@
 	}
 
 	async function handleGrab(release: Release, streaming?: boolean) {
+		if (streaming && !canUsenetStream) {
+			const reason = usenetStreamUnavailableReason ?? 'NNTP streaming is unavailable';
+			grabErrors.set(releaseKey(release), reason);
+			return;
+		}
+
 		const key = releaseKey(release);
 		grabbingIds.add(key);
 		if (streaming) {
@@ -365,7 +502,7 @@
 			if (result.success) {
 				grabbedIds.add(key);
 			} else {
-				grabErrors.set(key, result.error || 'Failed to grab');
+				grabErrors.set(key, getGrabErrorMessage(result.errorCode, result.error));
 			}
 		} catch (err) {
 			grabErrors.set(key, err instanceof Error ? err.message : 'Failed');
@@ -449,7 +586,7 @@
 			<div class="mb-4 space-y-2">
 				<div class="flex flex-wrap items-center gap-4 text-sm text-base-content/70">
 					{#if searchMode === 'multiSeasonPack'}
-						<span>{filteredReleases.length} of {modeBaseReleases.length} results</span>
+						<span>{filteredReleases.length} of {modeBaseReleases.length} multi-pack matches</span>
 						{#if modeRejectedCount}
 							<span class="text-warning">{modeRejectedCount} rejected</span>
 						{/if}
@@ -579,7 +716,7 @@
 							<div class="mb-2">
 								<span class="font-medium text-base-content/80"
 									>{searchMode === 'multiSeasonPack'
-										? 'Searched (multi-pack matches):'
+										? 'Searched (multi-pack matches / raw):'
 										: 'Searched:'}</span
 								>
 								<div class="mt-1 flex flex-wrap gap-2">
@@ -596,7 +733,11 @@
 											{:else if result.displayCount > 0}
 												<CheckCircle2 size={12} />
 											{/if}
-											{result.name}: {result.displayCount}
+											{#if searchMode === 'multiSeasonPack'}
+												{result.name}: {result.displayCount}/{result.rawCount}
+											{:else}
+												{result.name}: {result.displayCount}
+											{/if}
 											{#if result.error}
 												<span class="tooltip" data-tip={result.error}>
 													<AlertCircle size={12} />
@@ -687,7 +828,7 @@
 			<div class="form-control w-full sm:w-auto">
 				<input
 					type="text"
-					placeholder="Search results…"
+					placeholder={m.search_placeholder_filterResults()}
 					class="input input-sm w-full rounded-full border-base-content/20 bg-base-200/60 px-4 transition-all duration-200 placeholder:text-base-content/40 hover:bg-base-200 focus:border-primary/50 focus:bg-base-200 focus:ring-1 focus:ring-primary/20 focus:outline-none sm:w-48"
 					bind:value={filterQuery}
 				/>
@@ -695,12 +836,12 @@
 
 			<label class="label cursor-pointer gap-2">
 				<input type="checkbox" class="checkbox checkbox-sm" bind:checked={showRejected} />
-				<span class="label-text text-xs sm:text-sm">Show rejected</span>
+				<span class="label-text text-xs sm:text-sm">{m.search_label_showRejected()}</span>
 			</label>
 
 			<!-- Mobile sort control -->
 			<div class="ml-auto flex items-center gap-1 sm:hidden">
-				<span class="text-xs text-base-content/60">Sort:</span>
+				<span class="text-xs text-base-content/60">{m.search_label_sort()}</span>
 				<select
 					class="select-bordered select select-xs"
 					value={sortBy}
@@ -708,9 +849,9 @@
 						sortBy = e.currentTarget.value as typeof sortBy;
 					}}
 				>
-					<option value="score">Score</option>
-					<option value="seeders">Seeders</option>
-					<option value="size">Size</option>
+					<option value="score">{m.search_sort_score()}</option>
+					<option value="seeders">{m.search_sort_seeders()}</option>
+					<option value="size">{m.search_sort_size()}</option>
 					<option value="age">Age</option>
 				</select>
 				<button
@@ -737,6 +878,15 @@
 		{:else if filteredReleases.length === 0}
 			<div class="flex flex-col items-center justify-center py-12">
 				{#if searchMode === 'multiSeasonPack'}
+					{#if rawReleaseCount > 0}
+						<div
+							class="mb-4 max-w-xl rounded-lg border border-base-300 bg-base-200 p-3 text-center text-sm"
+						>
+							<p class="mt-1 text-base-content/60">
+								{rawReleaseCount} releases matched the title, but none matched complete/multi-season rules.
+							</p>
+						</div>
+					{/if}
 					<Package size={48} class="text-base-content/30" />
 					<p class="mt-4 text-base-content/60">No multi-season packs found</p>
 					<p class="mt-2 text-sm text-base-content/40">
@@ -791,6 +941,9 @@
 								grabbed={grabbedIds.has(releaseKey(release))}
 								streaming={streamingIds.has(releaseKey(release))}
 								error={grabErrors.get(releaseKey(release))}
+								{showUsenetStreamButton}
+								{canUsenetStream}
+								{usenetStreamUnavailableReason}
 								onClick={showDebugPanel ? () => (selectedDebugRelease = release) : undefined}
 								clickable={showDebugPanel}
 							/>
@@ -897,11 +1050,14 @@
 									Failed
 								</span>
 							{:else}
-								{#if release.protocol === 'usenet'}
+								{#if release.protocol === 'usenet' && showUsenetStreamButton}
 									<button
 										class="btn btn-xs btn-accent"
 										onclick={() => handleGrab(release, true)}
-										disabled={isGrabbing || isStreaming}
+										disabled={isGrabbing || isStreaming || !canUsenetStream}
+										title={canUsenetStream
+											? 'Stream (NNTP)'
+											: (usenetStreamUnavailableReason ?? 'NNTP streaming unavailable')}
 									>
 										{#if isStreaming}
 											<Loader2 size={12} class="animate-spin" />

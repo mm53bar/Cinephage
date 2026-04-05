@@ -9,6 +9,7 @@
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, readFileSync } from 'fs';
 import { join, dirname, resolve, relative } from 'path';
 import { createChildLogger } from '$lib/logging';
+import { getRecoverableApiKeyByType } from '$lib/server/auth/index.js';
 import { db } from '$lib/server/db';
 import {
 	movies,
@@ -19,6 +20,8 @@ import {
 	episodeFiles
 } from '$lib/server/db/schema';
 import { eq, and, asc, sql } from 'drizzle-orm';
+import { NamingService, type MediaNamingInfo } from '$lib/server/library/naming/NamingService.js';
+import { namingSettingsService } from '$lib/server/library/naming/NamingSettingsService.js';
 
 const logger = createChildLogger({ module: 'StrmService' });
 
@@ -90,6 +93,8 @@ export interface StrmCreateOptions {
 	episode?: number;
 	/** Base URL for the application (e.g., http://localhost:5173) */
 	baseUrl: string;
+	/** Optional API key for authentication (if not provided, will be fetched from DB) */
+	apiKey?: string;
 }
 
 export interface StrmCreateResult {
@@ -103,6 +108,8 @@ export interface SeriesData {
 	title: string;
 	year: number | null;
 	path: string | null;
+	tvdbId?: number | null;
+	seasonFolder?: boolean | null;
 }
 
 /** Pre-fetched episode data for batch processing */
@@ -120,6 +127,8 @@ export interface StrmDirectOptions {
 	seriesData: SeriesData;
 	seasonNumber: number;
 	episode: EpisodeData;
+	/** Optional API key for authentication (if not provided, will be fetched from DB) */
+	apiKey?: string;
 }
 
 /**
@@ -138,12 +147,57 @@ export class StrmService {
 	}
 
 	/**
+	 * Fetch the Media Streaming API Key from the database
+	 * This key is used for authenticating streaming requests from media servers
+	 * Queries directly from database to work in background contexts without user session
+	 */
+	private async getMediaStreamingApiKey(): Promise<string | null> {
+		try {
+			const key = await getRecoverableApiKeyByType('streaming');
+
+			if (!key) {
+				logger.debug('[StrmService] No Media Streaming API Key found in database');
+				return null;
+			}
+
+			return key;
+		} catch (error) {
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : 'Unknown error'
+				},
+				'[StrmService] Failed to fetch Media Streaming API Key'
+			);
+			return null;
+		}
+	}
+
+	/**
 	 * Generate the content of a .strm file
 	 * Points to our resolve endpoint which handles stream extraction on-demand
+	 * Automatically includes Media Streaming API Key for authentication
 	 */
-	generateStrmContent(options: StrmCreateOptions): string {
-		const { mediaType, tmdbId, season, episode, baseUrl } = options;
+	async generateStrmContent(options: StrmCreateOptions): Promise<string> {
+		const { mediaType, tmdbId, season, episode, baseUrl, apiKey: providedApiKey } = options;
 
+		// For HTTP URLs, we need to include the API key
+		if (baseUrl.startsWith('http')) {
+			// Use provided API key, or fetch from database if not provided
+			const apiKey = providedApiKey ?? (await this.getMediaStreamingApiKey());
+			if (!apiKey) {
+				throw new Error(
+					'Media Streaming API Key not found. Generate API keys in Settings > System.'
+				);
+			}
+
+			if (mediaType === 'movie') {
+				return `${baseUrl}/api/streaming/resolve/movie/${tmdbId}?api_key=${apiKey}`;
+			} else {
+				return `${baseUrl}/api/streaming/resolve/tv/${tmdbId}/${season}/${episode}?api_key=${apiKey}`;
+			}
+		}
+
+		// For stream:// protocol (internal use), don't add API key
 		if (mediaType === 'movie') {
 			return `${baseUrl}/api/streaming/resolve/movie/${tmdbId}`;
 		} else {
@@ -159,7 +213,6 @@ export class StrmService {
 
 		try {
 			let destinationPath: string;
-			let filename: string;
 
 			if (mediaType === 'movie' && movieId) {
 				// Get movie details for folder path
@@ -184,20 +237,7 @@ export class StrmService {
 					return { success: false, error: 'Root folder not found' };
 				}
 
-				// Build movie folder path - use existing path or construct from title
-				const safeName = this.sanitizeFilename(movie.title);
-				const year = movie.year ?? 'Unknown';
-				const rawFolderName = movie.path || `${safeName} (${year})`;
-
-				// Sanitize path to prevent traversal attacks
-				const folderName = sanitizePath(rawFolderName);
-				if (!isPathSafe(rootFolder.path, folderName)) {
-					return { success: false, error: 'Invalid movie path: path traversal detected' };
-				}
-
-				const movieFolder = join(rootFolder.path, folderName);
-				filename = `${safeName} (${year}).strm`;
-				destinationPath = join(movieFolder, filename);
+				destinationPath = this.buildMovieStrmPath(rootFolder.path, movie);
 			} else if (mediaType === 'tv' && seriesId && season !== undefined && episode !== undefined) {
 				// Get series details
 				const show = await db.query.series.findFirst({
@@ -221,20 +261,6 @@ export class StrmService {
 					return { success: false, error: 'Root folder not found' };
 				}
 
-				// Build episode folder path - use existing path or construct from title
-				const safeName = this.sanitizeFilename(show.title);
-				const year = show.year ?? 'Unknown';
-				const rawShowPath = show.path || `${safeName} (${year})`;
-
-				// Sanitize path to prevent traversal attacks
-				const showPath = sanitizePath(rawShowPath);
-				if (!isPathSafe(rootFolder.path, showPath)) {
-					return { success: false, error: 'Invalid series path: path traversal detected' };
-				}
-
-				const showFolder = join(rootFolder.path, showPath);
-				const seasonFolder = join(showFolder, `Season ${season.toString().padStart(2, '0')}`);
-
 				// Get episode title if available
 				const episodeRow = await db.query.episodes.findFirst({
 					where: and(
@@ -243,13 +269,13 @@ export class StrmService {
 						eq(episodes.episodeNumber, episode)
 					)
 				});
-				const seasonStr = season.toString().padStart(2, '0');
-				const episodeStr = episode.toString().padStart(2, '0');
-				const episodeTitle = episodeRow?.title
-					? ` - ${this.sanitizeFilename(episodeRow.title)}`
-					: '';
-				filename = `${safeName} - S${seasonStr}E${episodeStr}${episodeTitle}.strm`;
-				destinationPath = join(seasonFolder, filename);
+				destinationPath = this.buildEpisodeStrmPath(
+					rootFolder.path,
+					show,
+					season,
+					episode,
+					episodeRow?.title
+				);
 			} else {
 				return { success: false, error: 'Invalid options for creating .strm file' };
 			}
@@ -258,22 +284,25 @@ export class StrmService {
 			const dir = dirname(destinationPath);
 			if (!existsSync(dir)) {
 				mkdirSync(dir, { recursive: true });
-				logger.debug('[StrmService] Created directory', { dir });
+				logger.debug({ dir }, '[StrmService] Created directory');
 			}
 
 			// Generate and write .strm content
-			const content = this.generateStrmContent(options);
+			const content = await this.generateStrmContent(options);
 			writeFileSync(destinationPath, content, 'utf8');
 
-			logger.info('[StrmService] Created .strm file', {
-				path: destinationPath,
-				content
-			});
+			logger.info(
+				{
+					path: destinationPath,
+					content
+				},
+				'[StrmService] Created .strm file'
+			);
 
 			return { success: true, filePath: destinationPath };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StrmService] Failed to create .strm file', { error: message });
+			logger.error({ err: error }, '[StrmService] Failed to create .strm file');
 			return { success: false, error: message };
 		}
 	}
@@ -282,27 +311,41 @@ export class StrmService {
 	 * Create a .strm file using pre-fetched data (no DB queries)
 	 * This is the optimized version for batch operations
 	 */
-	createStrmFileDirect(options: StrmDirectOptions): StrmCreateResult {
-		const { tmdbId, baseUrl, rootFolderPath, seriesData, seasonNumber, episode } = options;
+	async createStrmFileDirect(options: StrmDirectOptions): Promise<StrmCreateResult> {
+		const {
+			tmdbId,
+			baseUrl,
+			rootFolderPath,
+			seriesData,
+			seasonNumber,
+			episode,
+			apiKey: providedApiKey
+		} = options;
 
 		try {
-			const safeName = this.sanitizeFilename(seriesData.title);
-			const year = seriesData.year ?? 'Unknown';
-			const rawShowPath = seriesData.path || `${safeName} (${year})`;
-
-			const showPath = sanitizePath(rawShowPath);
-			if (!isPathSafe(rootFolderPath, showPath)) {
-				return { success: false, error: 'Invalid series path: path traversal detected' };
+			// Use provided API key or fetch from database
+			const apiKey = providedApiKey ?? (await this.getMediaStreamingApiKey());
+			if (!apiKey) {
+				return {
+					success: false,
+					error: 'Media Streaming API Key not found. Generate API keys in Settings > System.'
+				};
 			}
 
-			const showFolder = join(rootFolderPath, showPath);
-			const seasonFolder = join(showFolder, `Season ${seasonNumber.toString().padStart(2, '0')}`);
-
-			const seasonStr = seasonNumber.toString().padStart(2, '0');
-			const episodeStr = episode.episodeNumber.toString().padStart(2, '0');
-			const episodeTitle = episode.title ? ` - ${this.sanitizeFilename(episode.title)}` : '';
-			const filename = `${safeName} - S${seasonStr}E${episodeStr}${episodeTitle}.strm`;
-			const destinationPath = join(seasonFolder, filename);
+			const destinationPath = this.buildEpisodeStrmPath(
+				rootFolderPath,
+				{
+					title: seriesData.title,
+					year: seriesData.year,
+					tmdbId: Number(tmdbId),
+					tvdbId: seriesData.tvdbId,
+					path: seriesData.path,
+					seasonFolder: seriesData.seasonFolder
+				},
+				seasonNumber,
+				episode.episodeNumber,
+				episode.title
+			);
 
 			// Ensure directory exists
 			const dir = dirname(destinationPath);
@@ -310,8 +353,8 @@ export class StrmService {
 				mkdirSync(dir, { recursive: true });
 			}
 
-			// Generate and write .strm content
-			const content = `${baseUrl}/api/streaming/resolve/tv/${tmdbId}/${seasonNumber}/${episode.episodeNumber}`;
+			// Generate and write .strm content with API key
+			const content = `${baseUrl}/api/streaming/resolve/tv/${tmdbId}/${seasonNumber}/${episode.episodeNumber}?api_key=${encodeURIComponent(apiKey)}`;
 			writeFileSync(destinationPath, content, 'utf8');
 
 			return { success: true, filePath: destinationPath };
@@ -328,27 +371,96 @@ export class StrmService {
 		try {
 			if (existsSync(filePath)) {
 				unlinkSync(filePath);
-				logger.info('[StrmService] Deleted .strm file', { path: filePath });
+				logger.info({ path: filePath }, '[StrmService] Deleted .strm file');
 				return true;
 			}
 			return false;
 		} catch (error) {
-			logger.error('[StrmService] Failed to delete .strm file', {
-				path: filePath,
-				error: error instanceof Error ? error.message : 'Unknown error'
-			});
+			logger.error(
+				{
+					path: filePath,
+					err: error
+				},
+				'[StrmService] Failed to delete .strm file'
+			);
 			return false;
 		}
 	}
 
-	/**
-	 * Sanitize a string for use as a filename
-	 */
-	private sanitizeFilename(name: string): string {
-		return name
-			.replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
-			.replace(/\s+/g, ' ') // Normalize whitespace
-			.trim();
+	private getNamingService(): NamingService {
+		return new NamingService(namingSettingsService.getConfigSync());
+	}
+
+	private buildMovieStrmPath(
+		rootFolderPath: string,
+		movie: {
+			title: string;
+			year: number | null;
+			tmdbId: number;
+			imdbId?: string | null;
+			path: string | null;
+		}
+	): string {
+		const namingService = this.getNamingService();
+		const info: MediaNamingInfo = {
+			title: movie.title,
+			year: movie.year ?? undefined,
+			tmdbId: movie.tmdbId,
+			imdbId: movie.imdbId ?? undefined,
+			originalExtension: '.strm'
+		};
+
+		const folderName = sanitizePath(movie.path || namingService.generateMovieFolderName(info));
+		if (!isPathSafe(rootFolderPath, folderName)) {
+			throw new Error('Invalid movie path: path traversal detected');
+		}
+
+		return join(rootFolderPath, folderName, namingService.generateMovieFileName(info));
+	}
+
+	private buildEpisodeStrmPath(
+		rootFolderPath: string,
+		show: {
+			title: string;
+			year: number | null;
+			tmdbId: number;
+			tvdbId?: number | null;
+			path: string | null;
+			seasonFolder?: boolean | null;
+		},
+		seasonNumber: number,
+		episodeNumber: number,
+		episodeTitle?: string | null
+	): string {
+		const namingService = this.getNamingService();
+		const seriesInfo: MediaNamingInfo = {
+			title: show.title,
+			year: show.year ?? undefined,
+			tmdbId: show.tmdbId,
+			tvdbId: show.tvdbId ?? undefined
+		};
+		const showPath = sanitizePath(show.path || namingService.generateSeriesFolderName(seriesInfo));
+		if (!isPathSafe(rootFolderPath, showPath)) {
+			throw new Error('Invalid series path: path traversal detected');
+		}
+
+		const episodeInfo: MediaNamingInfo = {
+			...seriesInfo,
+			seasonNumber,
+			episodeNumbers: [episodeNumber],
+			episodeTitle: episodeTitle ?? undefined,
+			originalExtension: '.strm'
+		};
+
+		const relativePath =
+			(show.seasonFolder ?? true)
+				? join(
+						namingService.generateSeasonFolderName(seasonNumber),
+						namingService.generateEpisodeFileName(episodeInfo)
+					)
+				: namingService.generateEpisodeFileName(episodeInfo);
+
+		return join(rootFolderPath, showPath, relativePath);
 	}
 
 	/**
@@ -386,8 +498,21 @@ export class StrmService {
 		season?: number;
 		episode?: number;
 	} | null {
+		const trimmedUrl = url.trim();
+		let pathToParse = trimmedUrl;
+
+		if (/^https?:\/\//i.test(trimmedUrl)) {
+			try {
+				pathToParse = new URL(trimmedUrl).pathname;
+			} catch {
+				pathToParse = trimmedUrl;
+			}
+		} else {
+			pathToParse = trimmedUrl.split('?')[0]?.split('#')[0] ?? trimmedUrl;
+		}
+
 		// Match movie URL: {anyBaseUrl}/api/streaming/resolve/movie/{tmdbId}
-		const movieMatch = url.match(/\/api\/streaming\/resolve\/movie\/(\d+)$/);
+		const movieMatch = pathToParse.match(/\/api\/streaming\/resolve\/movie\/(\d+)\/?$/);
 		if (movieMatch) {
 			return {
 				mediaType: 'movie',
@@ -396,7 +521,7 @@ export class StrmService {
 		}
 
 		// Match TV URL: {anyBaseUrl}/api/streaming/resolve/tv/{tmdbId}/{season}/{episode}
-		const tvMatch = url.match(/\/api\/streaming\/resolve\/tv\/(\d+)\/(\d+)\/(\d+)$/);
+		const tvMatch = pathToParse.match(/\/api\/streaming\/resolve\/tv\/(\d+)\/(\d+)\/(\d+)\/?$/);
 		if (tvMatch) {
 			return {
 				mediaType: 'tv',
@@ -414,9 +539,13 @@ export class StrmService {
 	 * This is useful when the server's IP/port/domain changes.
 	 *
 	 * @param newBaseUrl - The new base URL to use in .strm files
+	 * @param options - Optional configuration including API key for authentication
 	 * @returns Summary of the update operation
 	 */
-	async bulkUpdateStrmUrls(newBaseUrl: string): Promise<{
+	async bulkUpdateStrmUrls(
+		newBaseUrl: string,
+		options?: { apiKey?: string }
+	): Promise<{
 		success: boolean;
 		totalFiles: number;
 		updatedFiles: number;
@@ -429,7 +558,13 @@ export class StrmService {
 		// Remove trailing slash from base URL
 		const baseUrl = newBaseUrl.replace(/\/$/, '');
 
-		logger.info('[StrmService] Starting bulk .strm URL update', { newBaseUrl: baseUrl });
+		logger.info(
+			{
+				newBaseUrl: baseUrl,
+				hasApiKey: !!options?.apiKey
+			},
+			'[StrmService] Starting bulk .strm URL update'
+		);
 
 		try {
 			const movieStrmLike = sql`lower(${movieFiles.relativePath}) like '%.strm'`;
@@ -486,10 +621,13 @@ export class StrmService {
 			}
 
 			totalFiles = strmFiles.size;
-			logger.info('[StrmService] Found streamer .strm files to process', {
-				count: totalFiles,
-				skippedMissingMetadata
-			});
+			logger.info(
+				{
+					count: totalFiles,
+					skippedMissingMetadata
+				},
+				'[StrmService] Found streamer .strm files to process'
+			);
 
 			// Process each .strm file
 			for (const filePath of strmFiles) {
@@ -505,23 +643,27 @@ export class StrmService {
 					}
 
 					// Generate new content with the new base URL
-					const newContent = this.generateStrmContent({
+					const newContent = await this.generateStrmContent({
 						mediaType: parsed.mediaType,
 						tmdbId: parsed.tmdbId,
 						season: parsed.season,
 						episode: parsed.episode,
-						baseUrl
+						baseUrl,
+						apiKey: options?.apiKey
 					});
 
 					// Only write if content actually changed
 					if (currentContent !== newContent) {
 						writeFileSync(filePath, newContent, 'utf8');
 						updatedFiles++;
-						logger.debug('[StrmService] Updated .strm file', {
-							path: filePath,
-							oldUrl: currentContent.substring(0, 50) + '...',
-							newUrl: newContent.substring(0, 50) + '...'
-						});
+						logger.debug(
+							{
+								path: filePath,
+								oldUrl: currentContent.substring(0, 50) + '...',
+								newUrl: newContent.substring(0, 50) + '...'
+							},
+							'[StrmService] Updated .strm file'
+						);
 					}
 				} catch (error) {
 					const message = error instanceof Error ? error.message : 'Unknown error';
@@ -529,12 +671,15 @@ export class StrmService {
 				}
 			}
 
-			logger.info('[StrmService] Bulk .strm URL update complete', {
-				totalFiles,
-				updatedFiles,
-				unchanged: totalFiles - updatedFiles - errors.length,
-				errors: errors.length
-			});
+			logger.info(
+				{
+					totalFiles,
+					updatedFiles,
+					unchanged: totalFiles - updatedFiles - errors.length,
+					errors: errors.length
+				},
+				'[StrmService] Bulk .strm URL update complete'
+			);
 
 			return {
 				success: true,
@@ -544,7 +689,7 @@ export class StrmService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StrmService] Bulk .strm URL update failed', { error: message });
+			logger.error({ err: error }, '[StrmService] Bulk .strm URL update failed');
 			return {
 				success: false,
 				totalFiles,
@@ -663,7 +808,13 @@ export class StrmService {
 					return { success: false, results: [], error: 'Series has no root folder configured' };
 				}
 
-				seriesData = { title: show.title, year: show.year, path: show.path };
+				seriesData = {
+					title: show.title,
+					year: show.year,
+					path: show.path,
+					tvdbId: show.tvdbId,
+					seasonFolder: show.seasonFolder
+				};
 				rootFolderPath = show.rootFolder.path;
 			}
 
@@ -702,16 +853,19 @@ export class StrmService {
 				};
 			}
 
-			logger.info('[StrmService] Creating season pack .strm files', {
-				seriesId,
-				seasonNumber,
-				episodeCount: seasonEpisodes.length,
-				episodeNumbers: seasonEpisodes.map((e) => e.episodeNumber)
-			});
+			logger.info(
+				{
+					seriesId,
+					seasonNumber,
+					episodeCount: seasonEpisodes.length,
+					episodeNumbers: seasonEpisodes.map((e) => e.episodeNumber)
+				},
+				'[StrmService] Creating season pack .strm files'
+			);
 
 			// Process episodes in parallel batches using the direct method (no DB queries)
 			const results = await processInBatches(seasonEpisodes, async (ep) => {
-				const result = this.createStrmFileDirect({
+				const result = await this.createStrmFileDirect({
 					tmdbId,
 					baseUrl,
 					rootFolderPath: rootFolderPath!,
@@ -730,12 +884,15 @@ export class StrmService {
 
 			const successCount = results.filter((r) => r.filePath).length;
 
-			logger.info('[StrmService] Season pack .strm files created', {
-				seriesId,
-				seasonNumber,
-				success: successCount,
-				failed: seasonEpisodes.length - successCount
-			});
+			logger.info(
+				{
+					seriesId,
+					seasonNumber,
+					success: successCount,
+					failed: seasonEpisodes.length - successCount
+				},
+				'[StrmService] Season pack .strm files created'
+			);
 
 			return {
 				success: successCount > 0,
@@ -743,11 +900,14 @@ export class StrmService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StrmService] Failed to create season pack .strm files', {
-				seriesId,
-				seasonNumber,
-				error: message
-			});
+			logger.error(
+				{
+					seriesId,
+					seasonNumber,
+					err: error
+				},
+				'[StrmService] Failed to create season pack .strm files'
+			);
 			return { success: false, results: [], error: message };
 		}
 	}
@@ -792,7 +952,13 @@ export class StrmService {
 				return { success: false, results: [], error: 'Series has no root folder configured' };
 			}
 
-			const seriesData: SeriesData = { title: show.title, year: show.year, path: show.path };
+			const seriesData: SeriesData = {
+				title: show.title,
+				year: show.year,
+				path: show.path,
+				tvdbId: show.tvdbId,
+				seasonFolder: show.seasonFolder
+			};
 			const rootFolderPath = show.rootFolder.path;
 
 			// Pre-fetch ALL episodes for the series in one query
@@ -806,8 +972,7 @@ export class StrmService {
 			const episodesBySeason = new Map<number, EpisodeData[]>();
 
 			for (const ep of allEpisodes) {
-				// Skip Season 0 (Specials) and unaired episodes
-				if (ep.seasonNumber === 0) continue;
+				// Skip unaired episodes (but allow specials/season 0)
 				if (ep.airDate && ep.airDate > today) continue;
 
 				const seasonEps = episodesBySeason.get(ep.seasonNumber) || [];
@@ -825,15 +990,18 @@ export class StrmService {
 				episodeBreakdown[season] = eps.map((e) => e.episodeNumber);
 			}
 
-			logger.info('[StrmService] Creating complete series .strm files', {
-				seriesId,
-				seasonCount: episodesBySeason.size,
-				totalEpisodes: Array.from(episodesBySeason.values()).reduce(
-					(sum, eps) => sum + eps.length,
-					0
-				),
-				episodeBreakdown
-			});
+			logger.info(
+				{
+					seriesId,
+					seasonCount: episodesBySeason.size,
+					totalEpisodes: Array.from(episodesBySeason.values()).reduce(
+						(sum, eps) => sum + eps.length,
+						0
+					),
+					episodeBreakdown
+				},
+				'[StrmService] Creating complete series .strm files'
+			);
 
 			// Process all seasons in parallel, each season processes its episodes in batches
 			const seasonNumbers = Array.from(episodesBySeason.keys()).sort((a, b) => a - b);
@@ -864,13 +1032,16 @@ export class StrmService {
 				totalEpisodes += result.episodeResults.length;
 			}
 
-			logger.info('[StrmService] Complete series .strm files created', {
-				seriesId,
-				seasonsProcessed: seasonResults.length,
-				totalEpisodes,
-				totalSuccess,
-				totalFailed: totalEpisodes - totalSuccess
-			});
+			logger.info(
+				{
+					seriesId,
+					seasonsProcessed: seasonResults.length,
+					totalEpisodes,
+					totalSuccess,
+					totalFailed: totalEpisodes - totalSuccess
+				},
+				'[StrmService] Complete series .strm files created'
+			);
 
 			return {
 				success: totalSuccess > 0,
@@ -878,10 +1049,13 @@ export class StrmService {
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StrmService] Failed to create complete series .strm files', {
-				seriesId,
-				error: message
-			});
+			logger.error(
+				{
+					seriesId,
+					err: error
+				},
+				'[StrmService] Failed to create complete series .strm files'
+			);
 			return { success: false, results: [], error: message };
 		}
 	}
@@ -897,8 +1071,24 @@ export class StrmService {
 		seasonNumber?: number;
 		episodeId?: string;
 		baseUrl: string;
+		apiKey?: string;
 	}): Promise<StrmCreateResult> {
-		const { mountId, fileIndex, movieId, seriesId, seasonNumber, episodeId, baseUrl } = options;
+		const {
+			mountId,
+			fileIndex,
+			movieId,
+			seriesId,
+			seasonNumber,
+			episodeId,
+			baseUrl,
+			apiKey: providedApiKey
+		} = options;
+
+		// Use provided API key or fetch from database
+		const apiKey = providedApiKey ?? (await this.getMediaStreamingApiKey());
+		if (!apiKey) {
+			throw new Error('Media Streaming API Key not found. Generate API keys in Settings > System.');
+		}
 
 		try {
 			let destinationPath: string;
@@ -917,18 +1107,7 @@ export class StrmService {
 					return { success: false, error: 'Movie has no root folder configured' };
 				}
 
-				const safeName = this.sanitizeFilename(movie.title);
-				const year = movie.year ?? 'Unknown';
-				const rawFolderName = movie.path || `${safeName} (${year})`;
-				const folderName = sanitizePath(rawFolderName);
-
-				if (!isPathSafe(movie.rootFolder.path, folderName)) {
-					return { success: false, error: 'Invalid movie path: path traversal detected' };
-				}
-
-				const movieFolder = join(movie.rootFolder.path, folderName);
-				const filename = `${safeName} (${year}).strm`;
-				destinationPath = join(movieFolder, filename);
+				destinationPath = this.buildMovieStrmPath(movie.rootFolder.path, movie);
 			} else if (seriesId && seasonNumber !== undefined && episodeId) {
 				// Get series and episode details
 				const show = await db.query.series.findFirst({
@@ -951,25 +1130,13 @@ export class StrmService {
 					return { success: false, error: `Episode not found: ${episodeId}` };
 				}
 
-				const safeName = this.sanitizeFilename(show.title);
-				const year = show.year ?? 'Unknown';
-				const rawShowPath = show.path || `${safeName} (${year})`;
-				const showPath = sanitizePath(rawShowPath);
-
-				if (!isPathSafe(show.rootFolder.path, showPath)) {
-					return { success: false, error: 'Invalid series path: path traversal detected' };
-				}
-
-				const showFolder = join(show.rootFolder.path, showPath);
-				const seasonFolder = join(showFolder, `Season ${seasonNumber.toString().padStart(2, '0')}`);
-
-				const seasonStr = seasonNumber.toString().padStart(2, '0');
-				const episodeStr = episodeRow.episodeNumber.toString().padStart(2, '0');
-				const episodeTitle = episodeRow.title
-					? ` - ${this.sanitizeFilename(episodeRow.title)}`
-					: '';
-				const filename = `${safeName} - S${seasonStr}E${episodeStr}${episodeTitle}.strm`;
-				destinationPath = join(seasonFolder, filename);
+				destinationPath = this.buildEpisodeStrmPath(
+					show.rootFolder.path,
+					show,
+					seasonNumber,
+					episodeRow.episodeNumber,
+					episodeRow.title
+				);
 			} else {
 				return { success: false, error: 'Invalid options for creating NZB .strm file' };
 			}
@@ -978,23 +1145,26 @@ export class StrmService {
 			const dir = dirname(destinationPath);
 			if (!existsSync(dir)) {
 				mkdirSync(dir, { recursive: true });
-				logger.debug('[StrmService] Created directory', { dir });
+				logger.debug({ dir }, '[StrmService] Created directory');
 			}
 
-			// Generate NZB streaming URL
-			const content = `${baseUrl}/api/streaming/usenet/${mountId}/${fileIndex}`;
+			// Generate NZB streaming URL with API key
+			const content = `${baseUrl}/api/streaming/usenet/${mountId}/${fileIndex}?api_key=${encodeURIComponent(apiKey)}`;
 			writeFileSync(destinationPath, content, 'utf8');
 
-			logger.info('[StrmService] Created NZB .strm file', {
-				path: destinationPath,
-				mountId,
-				fileIndex
-			});
+			logger.info(
+				{
+					path: destinationPath,
+					mountId,
+					fileIndex
+				},
+				'[StrmService] Created NZB .strm file'
+			);
 
 			return { success: true, filePath: destinationPath };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
-			logger.error('[StrmService] Failed to create NZB .strm file', { error: message });
+			logger.error({ err: error }, '[StrmService] Failed to create NZB .strm file');
 			return { success: false, error: message };
 		}
 	}

@@ -16,7 +16,9 @@ import { tmdbMatcher, TmdbMatcher, type TmdbHint } from './TmdbMatcher.js';
 import type { QualityPreset, ScoreComponents } from './types.js';
 import type { ScoringProfile, SizeValidationContext, PackPreference } from '../scoring/index.js';
 import { calculatePackBonus } from '../scoring/types.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { getProtocolHandler, type ProtocolContext } from '../indexers/protocols';
 import type { ProtocolSettings } from '$lib/server/db/schema';
 
@@ -120,13 +122,16 @@ export class ReleaseEnricher {
 			}
 
 			// Debug logging for profile scoring issues
-			logger.info('[ReleaseEnricher] Using profile', {
-				requestedId: options.scoringProfileId,
-				loadedId: profile?.id,
-				loadedName: profile?.name,
-				formatScoresCount: profile ? Object.keys(profile.formatScores).length : 0,
-				sampleKeys: profile ? Object.keys(profile.formatScores).slice(0, 5) : []
-			});
+			logger.info(
+				{
+					requestedId: options.scoringProfileId,
+					loadedId: profile?.id,
+					loadedName: profile?.name,
+					formatScoresCount: profile ? Object.keys(profile.formatScores).length : 0,
+					sampleKeys: profile ? Object.keys(profile.formatScores).slice(0, 5) : []
+				},
+				'[ReleaseEnricher] Using profile'
+			);
 		}
 
 		// Enrich each release
@@ -173,7 +178,11 @@ export class ReleaseEnricher {
 		const releaseWithCache = release as ReleaseResult & {
 			_parsedRelease?: ReturnType<typeof parseRelease>;
 		};
-		const parsed = releaseWithCache._parsedRelease ?? parseRelease(release.title);
+		const parsed =
+			releaseWithCache._parsedRelease ??
+			parseRelease(release.title, {
+				sourceLanguage: release.sourceLanguage
+			});
 
 		// Calculate quality score using enhanced scoring if profile available
 		// Pass release.size (bytes) for file size filtering
@@ -319,7 +328,7 @@ export class ReleaseEnricher {
 				}
 			} catch (error) {
 				// TMDB matching is optional, don't fail the whole enrichment
-				logger.error('TMDB matching failed', error, { releaseTitle: release.title });
+				logger.error({ err: error, ...{ releaseTitle: release.title } }, 'TMDB matching failed');
 			}
 		}
 

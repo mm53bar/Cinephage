@@ -28,11 +28,14 @@ const YEAR_PATTERN = /\b(19\d{2}|20\d{2})\b/;
  */
 const EDITION_PATTERNS: Array<{ pattern: RegExp; edition: string }> = [
 	{ pattern: /\bdirector'?s?[\s._-]?cut\b/i, edition: "Director's Cut" },
+	{ pattern: /\bfinal[\s._-]?cut\b/i, edition: 'Final Cut' },
 	{ pattern: /\bextended[\s._-]?(?:cut|edition)?\b/i, edition: 'Extended' },
 	{ pattern: /\bunrated\b/i, edition: 'Unrated' },
 	{ pattern: /\btheatrical\b/i, edition: 'Theatrical' },
 	{ pattern: /\bremastered\b/i, edition: 'Remastered' },
+	{ pattern: /\bimax[\s._-]?enhanced\b/i, edition: 'IMAX Enhanced' },
 	{ pattern: /\bimax\b/i, edition: 'IMAX' },
+	{ pattern: /\bhybrid\b/i, edition: 'Hybrid' },
 	{ pattern: /\bcriterion\b/i, edition: 'Criterion' },
 	{ pattern: /\bspecial[\s._-]?edition\b/i, edition: 'Special Edition' },
 	{ pattern: /\banniversary[\s._-]?edition\b/i, edition: 'Anniversary Edition' },
@@ -52,6 +55,11 @@ const FLAG_PATTERNS = {
 	hardcodedSubs: /\bhc\b|\bhardcoded\b|\bkorsub\b/i
 };
 
+export interface ParseOptions {
+	/** Source indexer language (ISO 639-1 code) - used for language tagging */
+	sourceLanguage?: string;
+}
+
 /**
  * ReleaseParser - Main parser class for release titles
  */
@@ -60,9 +68,10 @@ export class ReleaseParser {
 	 * Parse a release title into structured metadata
 	 *
 	 * @param title - The release title to parse
+	 * @param options - Optional parsing options
 	 * @returns Parsed release information
 	 */
-	parse(title: string): ParsedRelease {
+	parse(title: string, options?: ParseOptions): ParsedRelease {
 		const originalTitle = title;
 
 		// Normalize the title for parsing
@@ -84,6 +93,9 @@ export class ReleaseParser {
 		const groupMatch = extractReleaseGroup(normalized);
 		const year = this.extractYear(normalized);
 		const edition = this.extractEdition(normalized);
+
+		// Merge detected languages with source language
+		const languages = this.mergeLanguages(languageMatch.languages, options?.sourceLanguage);
 
 		// Extract special flags
 		const isProper = FLAG_PATTERNS.proper.test(normalized);
@@ -124,7 +136,8 @@ export class ReleaseParser {
 			audioChannels: enhancedAudio.channels !== 'unknown' ? enhancedAudio.channels : undefined,
 			hasAtmos: enhancedAudio.hasAtmos,
 			episode: episodeMatch?.info,
-			languages: languageMatch.languages,
+			languages,
+			sourceLanguage: options?.sourceLanguage,
 			releaseGroup: groupMatch?.group,
 			edition,
 			isProper,
@@ -179,6 +192,26 @@ export class ReleaseParser {
 			}
 		}
 		return undefined;
+	}
+
+	/**
+	 * Merge detected languages with source indexer language.
+	 * Source language is added if not already detected from the title.
+	 */
+	private mergeLanguages(detectedLanguages: string[], sourceLanguage?: string): string[] {
+		if (!sourceLanguage) {
+			return detectedLanguages;
+		}
+
+		// Normalize source language to ISO 639-1
+		const normalizedSource = sourceLanguage.toLowerCase().split('-')[0];
+
+		// If source language is not already detected, add it
+		if (!detectedLanguages.includes(normalizedSource)) {
+			return [...detectedLanguages, normalizedSource];
+		}
+
+		return detectedLanguages;
 	}
 
 	/**
@@ -340,8 +373,8 @@ export const releaseParser = new ReleaseParser();
 /**
  * Convenience function to parse a release title
  */
-export function parseRelease(title: string): ParsedRelease {
-	return releaseParser.parse(title);
+export function parseRelease(title: string, options?: ParseOptions): ParsedRelease {
+	return releaseParser.parse(title, options);
 }
 
 /**

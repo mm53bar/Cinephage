@@ -6,6 +6,7 @@
 
 // Main parser
 export { ReleaseParser, releaseParser, parseRelease } from './ReleaseParser.js';
+export type { ParseOptions } from './ReleaseParser.js';
 
 // Types
 export type {

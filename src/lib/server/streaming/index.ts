@@ -2,7 +2,7 @@
  * Streaming Module
  *
  * Provides streaming functionality for Cinephage including:
- * - Stream extraction from multiple providers via EncDec API
+ * - Cinephage API-backed stream resolution
  * - HLS playlist parsing and best quality selection
  * - Stream validation for playability verification
  * - Caching for stream URLs
@@ -24,12 +24,6 @@ export * from './hls';
 
 // Stream validation
 export { getStreamValidator, createStreamValidator, quickValidateStream } from './validation';
-
-// Stream providers (replaces extractors)
-export { extractStreams, getAvailableProviders, getProviderById, clearCaches } from './providers';
-
-// EncDec API client
-export { getEncDecClient, EncDecClient } from './enc-dec';
 
 // STRM file service
 export * from './StrmService';

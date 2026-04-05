@@ -7,17 +7,26 @@ import { createChildLogger } from '$lib/logging';
 import { assertFound, parseBody } from '$lib/server/api/validate';
 import { NotFoundError } from '$lib/errors';
 import { redactIndexer } from '$lib/server/utils/redaction.js';
+import { requireAdmin } from '$lib/server/auth/authorization.js';
 
 const logger = createChildLogger({ module: 'IndexerAPI' });
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params } = event;
 	const manager = await getIndexerManager();
 	const indexer = assertFound(await manager.getIndexer(params.id), 'Indexer', params.id);
 
 	return json(redactIndexer(indexer));
 };
 
-export const DELETE: RequestHandler = async ({ params }) => {
+export const DELETE: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params } = event;
 	const manager = await getIndexerManager();
 
 	try {
@@ -31,7 +40,11 @@ export const DELETE: RequestHandler = async ({ params }) => {
 	}
 };
 
-export const PUT: RequestHandler = async ({ params, request }) => {
+export const PUT: RequestHandler = async (event) => {
+	const authError = requireAdmin(event);
+	if (authError) return authError;
+
+	const { params, request } = event;
 	const validated = await parseBody(request, indexerUpdateSchema);
 	const manager = await getIndexerManager();
 
@@ -70,26 +83,35 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 
 		// If streaming indexer's baseUrl changed, trigger bulk .strm file update
 		if (isStreamingIndexer && newBaseUrl && oldBaseUrl !== newBaseUrl) {
-			logger.info('[IndexerAPI] Streaming baseUrl changed, triggering .strm file update', {
-				oldBaseUrl,
-				newBaseUrl
-			});
+			logger.info(
+				{
+					oldBaseUrl,
+					newBaseUrl
+				},
+				'[IndexerAPI] Streaming baseUrl changed, triggering .strm file update'
+			);
 
 			// Run in background to not block the response
 			import('$lib/server/streaming')
 				.then(async ({ strmService, getStreamingBaseUrl }) => {
 					const baseUrl = await getStreamingBaseUrl(newBaseUrl);
 					const result = await strmService.bulkUpdateStrmUrls(baseUrl);
-					logger.info('[IndexerAPI] Background .strm update complete', {
-						totalFiles: result.totalFiles,
-						updatedFiles: result.updatedFiles,
-						errors: result.errors.length
-					});
+					logger.info(
+						{
+							totalFiles: result.totalFiles,
+							updatedFiles: result.updatedFiles,
+							errors: result.errors.length
+						},
+						'[IndexerAPI] Background .strm update complete'
+					);
 				})
 				.catch((err) => {
-					logger.error('[IndexerAPI] Failed to update .strm files after baseUrl change', {
-						error: err instanceof Error ? err.message : 'Unknown error'
-					});
+					logger.error(
+						{
+							error: err instanceof Error ? err.message : 'Unknown error'
+						},
+						'[IndexerAPI] Failed to update .strm files after baseUrl change'
+					);
 				});
 		}
 

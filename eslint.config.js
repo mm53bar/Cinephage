@@ -46,6 +46,19 @@ export default defineConfig(
 		}
 	},
 	{
+		files: ['src/**/*.{ts,js}'],
+		ignores: [
+			'src/**/*.test.ts',
+			'src/**/*.spec.ts',
+			'src/**/__tests__/**',
+			'src/**/*.svelte.ts',
+			'src/**/*.svelte.js'
+		],
+		rules: {
+			'no-console': 'error'
+		}
+	},
+	{
 		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
 		languageOptions: {
 			parserOptions: {
@@ -54,6 +67,9 @@ export default defineConfig(
 				parser: ts.parser,
 				svelteConfig
 			}
+		},
+		rules: {
+			'no-console': 'error'
 		}
 	},
 	{
@@ -70,7 +86,8 @@ export default defineConfig(
 			// resolvePath internally calls resolve(), so navigation is correctly handled
 			'svelte/no-navigation-without-resolve': 'off',
 			// $state + $effect pattern is valid for URL sync and form state
-			'svelte/prefer-writable-derived': 'off'
+			'svelte/prefer-writable-derived': 'off',
+			'svelte/valid-prop-names-in-kit-pages': 'off'
 		}
 	}
 );

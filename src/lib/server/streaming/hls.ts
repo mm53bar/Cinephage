@@ -7,8 +7,9 @@
 
 import { logger } from '$lib/logging';
 import { fetchWithTimeout } from './utils/http';
+import { fetchWithCloudflareBypass } from './utils/cloudflare-streaming';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 // ============================================================================
 // Playlist Validation
@@ -95,10 +96,13 @@ export function sanitizePlaylist(content: string): string {
 	const extm3uIndex = content.indexOf('#EXTM3U');
 	if (extm3uIndex > 0) {
 		content = content.substring(extm3uIndex);
-		logger.debug('HLS removed garbage before #EXTM3U', {
-			removedBytes: extm3uIndex,
-			...streamLog
-		});
+		logger.debug(
+			{
+				removedBytes: extm3uIndex,
+				...streamLog
+			},
+			'HLS removed garbage before #EXTM3U'
+		);
 	} else if (extm3uIndex === -1) {
 		// No #EXTM3U found, return as-is
 		return content;
@@ -143,15 +147,18 @@ export function sanitizePlaylist(content: string): string {
 		}
 
 		// Skip unrecognized content
-		logger.debug('HLS sanitizer skipped line', { line: trimmed.substring(0, 50), ...streamLog });
+		logger.debug({ line: trimmed.substring(0, 50), ...streamLog }, 'HLS sanitizer skipped line');
 	}
 
 	// If we stopped at ENDLIST but there was content after, log it
 	if (foundEndlist && lines.length > sanitized.length) {
-		logger.debug('HLS removed content after #EXT-X-ENDLIST', {
-			removedLines: lines.length - sanitized.length,
-			...streamLog
-		});
+		logger.debug(
+			{
+				removedLines: lines.length - sanitized.length,
+				...streamLog
+			},
+			'HLS removed content after #EXT-X-ENDLIST'
+		);
 	}
 
 	return sanitized.join('\n');
@@ -286,21 +293,24 @@ export interface BestQualityResult {
  */
 export async function getBestQualityStreamUrl(
 	masterUrl: string,
-	referer: string
+	referer: string,
+	useCloudflareBypass: boolean = true
 ): Promise<BestQualityResult> {
 	try {
 		// Fetch the master playlist DIRECTLY (not through proxy - avoids loopback issues)
 		// Note: Don't send Origin header - some CDNs reject it
-		const response = await fetchWithTimeout(masterUrl, {
+		// Use Cloudflare bypass for streaming URLs that may be protected
+		const fetchFn = useCloudflareBypass ? fetchWithCloudflareBypass : fetchWithTimeout;
+		const response = await fetchFn(masterUrl, {
 			referer,
-			timeout: 8000,
+			timeout: 15000, // Increased timeout for Cloudflare bypass
 			headers: {
 				Accept: '*/*'
 			}
 		});
 
 		if (!response.ok) {
-			logger.warn('HLS failed to fetch master playlist', { status: response.status, ...streamLog });
+			logger.warn({ status: response.status, ...streamLog }, 'HLS failed to fetch master playlist');
 			// Fall back to master URL
 			return { rawUrl: masterUrl, isMasterUrl: true };
 		}
@@ -310,16 +320,16 @@ export async function getBestQualityStreamUrl(
 		// Check if this is a master playlist (has #EXT-X-STREAM-INF)
 		if (!playlist.includes('#EXT-X-STREAM-INF')) {
 			// This is already a media playlist, not a master
-			logger.debug('HLS not a master playlist, returning original', { ...streamLog });
+			logger.debug({ ...streamLog }, 'HLS not a master playlist, returning original');
 			return { rawUrl: masterUrl, isMasterUrl: true };
 		}
 
 		// Parse variants from the raw playlist
 		const variants = parseHLSMaster(playlist, masterUrl);
-		logger.debug('HLS found quality variants', { count: variants.length, ...streamLog });
+		logger.debug({ count: variants.length, ...streamLog }, 'HLS found quality variants');
 
 		if (variants.length === 0) {
-			logger.debug('HLS no variants found, returning original', { ...streamLog });
+			logger.debug({ ...streamLog }, 'HLS no variants found, returning original');
 			return { rawUrl: masterUrl, isMasterUrl: true };
 		}
 
@@ -328,7 +338,7 @@ export async function getBestQualityStreamUrl(
 			resolution: v.resolution ? `${v.resolution.width}x${v.resolution.height}` : 'unknown',
 			bandwidth: Math.round(v.bandwidth / 1000)
 		}));
-		logger.debug('HLS available qualities', { qualities, ...streamLog });
+		logger.debug({ qualities, ...streamLog }, 'HLS available qualities');
 
 		// Select best variant
 		const best = selectBestVariant(variants);
@@ -337,19 +347,25 @@ export async function getBestQualityStreamUrl(
 		}
 
 		const bestRes = best.resolution ? `${best.resolution.width}x${best.resolution.height}` : 'auto';
-		logger.debug('HLS selected best quality', {
-			resolution: bestRes,
-			bandwidth: Math.round(best.bandwidth / 1000),
-			...streamLog
-		});
+		logger.debug(
+			{
+				resolution: bestRes,
+				bandwidth: Math.round(best.bandwidth / 1000),
+				...streamLog
+			},
+			'HLS selected best quality'
+		);
 
 		// Return the raw best variant URL
 		return { rawUrl: best.url, isMasterUrl: false };
 	} catch (error) {
-		logger.warn('HLS error selecting best quality', {
-			error: error instanceof Error ? error.message : String(error),
-			...streamLog
-		});
+		logger.warn(
+			{
+				error: error instanceof Error ? error.message : String(error),
+				...streamLog
+			},
+			'HLS error selecting best quality'
+		);
 		// Fall back to master URL
 		return { rawUrl: masterUrl, isMasterUrl: true };
 	}

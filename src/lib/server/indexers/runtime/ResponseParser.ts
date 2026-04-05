@@ -16,7 +16,9 @@ import { parseSize } from '../types';
 import { TemplateEngine } from '../engine/TemplateEngine';
 import { FilterEngine } from '../engine/FilterEngine';
 import { SelectorEngine, type JsonValue } from '../engine/SelectorEngine';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 import { extractInfoHash } from '$lib/server/downloadClients/utils/hashUtils';
 
 export interface ParseResult {
@@ -80,21 +82,27 @@ export class ResponseParser {
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : String(error);
 			errors.push(`Parse error: ${errorMsg}`);
-			logger.warn('[ResponseParser] Parse failed', {
-				indexer: context.indexerName,
-				error: errorMsg,
-				responseType
-			});
+			logger.warn(
+				{
+					indexer: context.indexerName,
+					error: errorMsg,
+					responseType
+				},
+				'[ResponseParser] Parse failed'
+			);
 		}
 
 		// Log parse summary for debugging
 		if (releases.length === 0 || errors.length > 0) {
-			logger.debug('[ResponseParser] Parse completed', {
-				indexer: context.indexerName,
-				releases: releases.length,
-				errors: errors.length,
-				responseType
-			});
+			logger.debug(
+				{
+					indexer: context.indexerName,
+					releases: releases.length,
+					errors: errors.length,
+					responseType
+				},
+				'[ResponseParser] Parse completed'
+			);
 		}
 
 		return {
@@ -163,11 +171,14 @@ export class ResponseParser {
 		const multipleSelector = typeof search.rows.multiple === 'string' ? search.rows.multiple : null;
 
 		if (multipleSelector) {
-			logger.info('[ResponseParser] Parsing JSON with multiple directive', {
-				indexer: context.indexerName,
-				rowCount: filteredRows.length,
-				multipleSelector
-			});
+			logger.info(
+				{
+					indexer: context.indexerName,
+					rowCount: filteredRows.length,
+					multipleSelector
+				},
+				'[ResponseParser] Parsing JSON with multiple directive'
+			);
 		}
 
 		for (const row of filteredRows) {
@@ -175,24 +186,33 @@ export class ResponseParser {
 				if (multipleSelector && typeof row === 'object' && row !== null) {
 					// Extract nested array and create release for each item
 					const nestedItems = this.selectorEngine.selectJsonAll(row, multipleSelector);
-					logger.info('[ResponseParser] Processing multiple directive', {
-						indexer: context.indexerName,
-						nestedItemCount: nestedItems.length
-					});
+					logger.info(
+						{
+							indexer: context.indexerName,
+							nestedItemCount: nestedItems.length
+						},
+						'[ResponseParser] Processing multiple directive'
+					);
 					for (const nestedItem of nestedItems) {
 						// Pass parent row for accessing parent fields (title, imdb_code, etc.)
 						const release = this.extractReleaseFromJson(nestedItem, row, context);
 						if (release) {
 							releases.push(release);
-							logger.info('[ResponseParser] Extracted release from nested item', {
-								indexer: context.indexerName,
-								title: release.title
-							});
+							logger.info(
+								{
+									indexer: context.indexerName,
+									title: release.title
+								},
+								'[ResponseParser] Extracted release from nested item'
+							);
 						} else {
-							logger.info('[ResponseParser] Failed to extract release from nested item', {
-								indexer: context.indexerName,
-								nestedItem: JSON.stringify(nestedItem).slice(0, 200)
-							});
+							logger.info(
+								{
+									indexer: context.indexerName,
+									nestedItem: JSON.stringify(nestedItem).slice(0, 200)
+								},
+								'[ResponseParser] Failed to extract release from nested item'
+							);
 						}
 					}
 				} else {
@@ -200,9 +220,12 @@ export class ResponseParser {
 					if (release) releases.push(release);
 				}
 			} catch (error) {
-				logger.warn('Failed to parse JSON row', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to parse JSON row'
+				);
 			}
 		}
 
@@ -258,11 +281,14 @@ export class ResponseParser {
 				}
 				// Log required field errors at warn level
 				if (!this.isOptionalField(fieldName, fieldDef)) {
-					logger.warn(`[ResponseParser] Required field extraction failed`, {
-						indexer: context.indexerName,
-						field: fieldName,
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.warn(
+						{
+							indexer: context.indexerName,
+							field: fieldName,
+							error: error instanceof Error ? error.message : String(error)
+						},
+						`[ResponseParser] Required field extraction failed`
+					);
 				}
 				values[fieldName.toLowerCase()] = null;
 			}
@@ -355,9 +381,12 @@ export class ResponseParser {
 				const release = this.extractReleaseFromHtml($, row, context, currentDate);
 				if (release) releases.push(release);
 			} catch (error) {
-				logger.warn('Failed to parse HTML row', {
-					error: error instanceof Error ? error.message : String(error)
-				});
+				logger.warn(
+					{
+						error: error instanceof Error ? error.message : String(error)
+					},
+					'Failed to parse HTML row'
+				);
 			}
 		}
 
@@ -392,11 +421,14 @@ export class ResponseParser {
 				values[fieldName.toLowerCase()] = result.value;
 			} catch (error) {
 				if (!this.isOptionalField(fieldName, fieldDef)) {
-					logger.warn('[ResponseParser] Required field extraction failed', {
-						indexer: context.indexerName,
-						field: fieldName,
-						error: error instanceof Error ? error.message : String(error)
-					});
+					logger.warn(
+						{
+							indexer: context.indexerName,
+							field: fieldName,
+							error: error instanceof Error ? error.message : String(error)
+						},
+						'[ResponseParser] Required field extraction failed'
+					);
 				}
 				values[fieldName.toLowerCase()] = null;
 			}
@@ -496,6 +528,12 @@ export class ResponseParser {
 		// Make URLs absolute
 		const baseUrl = context.baseUrl;
 
+		// Extract language code from definition (e.g., "ru-RU" -> "ru")
+		const definitionLanguage = this.definition.language;
+		const sourceLanguage = definitionLanguage
+			? definitionLanguage.toLowerCase().split('-')[0]
+			: undefined;
+
 		const result: ReleaseResult = {
 			guid: String(guid),
 			title: title,
@@ -505,7 +543,8 @@ export class ResponseParser {
 			indexerId: context.indexerId,
 			indexerName: context.indexerName,
 			protocol: context.protocol,
-			categories
+			categories,
+			sourceLanguage
 		};
 
 		// Optional fields

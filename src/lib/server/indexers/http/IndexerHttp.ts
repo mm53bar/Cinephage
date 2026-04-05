@@ -199,7 +199,7 @@ export class IndexerHttp {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			errors.push(`${url}: ${message}`);
-			this.log.debug('Primary URL failed', { url, error: message });
+			this.log.debug({ url, error: message }, 'Primary URL failed');
 		}
 
 		// Try alternate URLs
@@ -207,16 +207,16 @@ export class IndexerHttp {
 			const altUrl = this.replaceBaseUrl(url, this.config.baseUrl, altBaseUrl);
 
 			try {
-				this.log.debug('Trying alternate URL', { altUrl });
+				this.log.debug({ altUrl }, 'Trying alternate URL');
 				await this.delay(500); // Small delay before failover
 
 				const response = await this.executeSingleRequest(altUrl, options);
-				this.log.info('Alternate URL succeeded', { altUrl });
+				this.log.info({ altUrl }, 'Alternate URL succeeded');
 				return response;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				errors.push(`${altUrl}: ${message}`);
-				this.log.debug('Alternate URL failed', { altUrl, error: message });
+				this.log.debug({ altUrl, error: message }, 'Alternate URL failed');
 			}
 		}
 
@@ -277,12 +277,12 @@ export class IndexerHttp {
 					const captchaEnabled = captchaSolverSettingsService.isEnabled();
 
 					if (!captchaEnabled) {
-						this.log.info('Cloudflare detected, captcha solver disabled', { url, host });
+						this.log.info({ url, host }, 'Cloudflare detected, captcha solver disabled');
 						throw new CloudflareProtectedError(host, response.status);
 					}
 
 					if (captchaSolver.isAvailable()) {
-						this.log.info('Cloudflare detected, fetching through browser', { url, host });
+						this.log.info({ url, host }, 'Cloudflare detected, fetching through browser');
 
 						// Fetch directly through the browser - this bypasses JA3/TLS fingerprinting
 						// that prevents Node.js fetch from working even with valid cookies
@@ -294,12 +294,15 @@ export class IndexerHttp {
 						});
 
 						if (fetchResult.success) {
-							this.log.info('Browser fetch succeeded', {
-								host,
-								status: fetchResult.status,
-								bodyLength: fetchResult.body.length,
-								timeMs: fetchResult.timeMs
-							});
+							this.log.info(
+								{
+									host,
+									status: fetchResult.status,
+									bodyLength: fetchResult.body.length,
+									timeMs: fetchResult.timeMs
+								},
+								'Browser fetch succeeded'
+							);
 
 							const responseHeaders = new Headers();
 							if (fetchResult.headers) {
@@ -320,10 +323,13 @@ export class IndexerHttp {
 						}
 
 						// Browser fetch failed
-						this.log.warn('Browser fetch failed', {
-							host,
-							error: fetchResult.error
-						});
+						this.log.warn(
+							{
+								host,
+								error: fetchResult.error
+							},
+							'Browser fetch failed'
+						);
 
 						throw new CloudflareBypassError(
 							host,
@@ -400,7 +406,7 @@ export class IndexerHttp {
 		const indexerLimiter = getRateLimitRegistry().get(this.config.indexerId);
 		const indexerWait = indexerLimiter.getWaitTime();
 		if (indexerWait > 0) {
-			this.log.debug('Rate limited by indexer', { waitMs: indexerWait });
+			this.log.debug({ waitMs: indexerWait }, 'Rate limited by indexer');
 			await this.delay(indexerWait);
 		}
 
@@ -409,7 +415,7 @@ export class IndexerHttp {
 		const hostLimiter = getHostRateLimiter().getLimiterForHost(host);
 		const hostWait = hostLimiter.getWaitTime();
 		if (hostWait > 0) {
-			this.log.debug('Rate limited by host', { host, waitMs: hostWait });
+			this.log.debug({ host, waitMs: hostWait }, 'Rate limited by host');
 			await this.delay(hostWait);
 		}
 	}

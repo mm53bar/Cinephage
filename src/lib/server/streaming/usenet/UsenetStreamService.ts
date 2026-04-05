@@ -12,8 +12,10 @@
 
 import { createReadStream, existsSync, statSync } from 'fs';
 import { basename } from 'path';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import { getNntpManager } from './NntpManager';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 import { parseNzb, isRarOnlyNzb, getBestStreamableFile } from './NzbParser';
 import { UsenetSeekableStream } from './UsenetSeekableStream';
 import {
@@ -99,10 +101,13 @@ class UsenetStreamService {
 		// Check if we have an extracted file ready to stream
 		const extractedFilePath = await this.getExtractedFilePath(mountId);
 		if (extractedFilePath && existsSync(extractedFilePath)) {
-			logger.info('[UsenetStreamService] Streaming from extracted file', {
-				mountId,
-				extractedFilePath
-			});
+			logger.info(
+				{
+					mountId,
+					extractedFilePath
+				},
+				'[UsenetStreamService] Streaming from extracted file'
+			);
 			return this.createExtractedFileStream(mountId, extractedFilePath, rangeHeader);
 		}
 
@@ -146,13 +151,16 @@ class UsenetStreamService {
 
 		const contentType = getContentType(file.name);
 
-		logger.info('[UsenetStreamService] Created stream', {
-			mountId,
-			fileIndex,
-			fileName: file.name,
-			range: range ? `${range.start}-${range.end}` : 'full',
-			contentType
-		});
+		logger.info(
+			{
+				mountId,
+				fileIndex,
+				fileName: file.name,
+				range: range ? `${range.start}-${range.end}` : 'full',
+				contentType
+			},
+			'[UsenetStreamService] Created stream'
+		);
 
 		return {
 			stream,
@@ -180,21 +188,24 @@ class UsenetStreamService {
 			};
 		}
 
-		logger.info('[UsenetStreamService] Starting checkStreamability', { mountId });
+		logger.info({ mountId }, '[UsenetStreamService] Starting checkStreamability');
 
 		try {
 			const parsed = await this.getParsedNzb(mount);
 
-			logger.info('[UsenetStreamService] checkStreamability parsed NZB', {
-				mountId,
-				filesCount: parsed.files.length,
-				mediaFilesCount: parsed.mediaFiles.length,
-				rarFilesCount: parsed.files.filter((f) => f.isRar).length
-			});
+			logger.info(
+				{
+					mountId,
+					filesCount: parsed.files.length,
+					mediaFilesCount: parsed.mediaFiles.length,
+					rarFilesCount: parsed.files.filter((f) => f.isRar).length
+				},
+				'[UsenetStreamService] checkStreamability parsed NZB'
+			);
 
 			// Check for RAR-only content
 			if (isRarOnlyNzb(parsed)) {
-				logger.info('[UsenetStreamService] Detected RAR-only content', { mountId });
+				logger.info({ mountId }, '[UsenetStreamService] Detected RAR-only content');
 				return this.checkRarStreamability(parsed);
 			}
 
@@ -203,11 +214,14 @@ class UsenetStreamService {
 			if (!bestFile) {
 				// Check if there are RAR files - provide better error message
 				const hasRarFiles = parsed.files.some((f) => f.isRar);
-				logger.info('[UsenetStreamService] No streamable file found', {
-					mountId,
-					hasRarFiles,
-					totalFiles: parsed.files.length
-				});
+				logger.info(
+					{
+						mountId,
+						hasRarFiles,
+						totalFiles: parsed.files.length
+					},
+					'[UsenetStreamService] No streamable file found'
+				);
 
 				if (hasRarFiles) {
 					return {
@@ -404,12 +418,15 @@ class UsenetStreamService {
 
 		const contentType = getContentType(filePath);
 
-		logger.info('[UsenetStreamService] Created extracted file stream', {
-			filePath: basename(filePath),
-			range: range ? `${startByte}-${endByte}` : 'full',
-			contentLength,
-			totalSize
-		});
+		logger.info(
+			{
+				filePath: basename(filePath),
+				range: range ? `${startByte}-${endByte}` : 'full',
+				contentLength,
+				totalSize
+			},
+			'[UsenetStreamService] Created extracted file stream'
+		);
 
 		return {
 			stream,
@@ -500,7 +517,7 @@ class UsenetStreamService {
 		}
 
 		if (nzbCleaned > 0) {
-			logger.debug('[UsenetStreamService] Cleaned NZB cache', { nzbCleaned });
+			logger.debug({ nzbCleaned }, '[UsenetStreamService] Cleaned NZB cache');
 		}
 	}
 }

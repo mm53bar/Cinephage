@@ -164,8 +164,11 @@ export interface ParsedRelease {
 	episode?: EpisodeInfo;
 
 	// Additional metadata
-	/** Detected languages (ISO 639-1 codes) */
+	/** Detected languages from title (ISO 639-1 codes) */
 	languages: string[];
+
+	/** Source indexer language (ISO 639-1 code) - where the release came from */
+	sourceLanguage?: string;
 
 	/** Release group name */
 	releaseGroup?: string;

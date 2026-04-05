@@ -9,8 +9,10 @@
  * - Checks persistent DB cache before NNTP fetch
  */
 
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
 import type { NntpManager } from './NntpManager';
+
+const logger = createChildLogger({ logDomain: 'streams' as const });
 import { SegmentStore } from './SegmentStore';
 import { getSegmentCacheService } from './SegmentCacheService';
 import type { AccessPattern, PrefetchStrategy } from './types';
@@ -153,12 +155,15 @@ export class AdaptivePrefetcher {
 					index
 				);
 				if (dbCached) {
-					logger.debug('[AdaptivePrefetcher] DB cache hit', {
-						mountId: this.mountId,
-						fileIndex: this.fileIndex,
-						segmentIndex: index,
-						size: dbCached.length
-					});
+					logger.debug(
+						{
+							mountId: this.mountId,
+							fileIndex: this.fileIndex,
+							segmentIndex: index,
+							size: dbCached.length
+						},
+						'[AdaptivePrefetcher] DB cache hit'
+					);
 					// Also cache in memory for faster subsequent access
 					this.store.cacheSegment(index, dbCached);
 					this.triggerPrefetch(index);
@@ -166,10 +171,13 @@ export class AdaptivePrefetcher {
 				}
 			} catch (error) {
 				// DB cache miss or error - fall through to NNTP fetch
-				logger.debug('[AdaptivePrefetcher] DB cache check failed', {
-					segmentIndex: index,
-					error: error instanceof Error ? error.message : 'Unknown'
-				});
+				logger.debug(
+					{
+						segmentIndex: index,
+						error: error instanceof Error ? error.message : 'Unknown'
+					},
+					'[AdaptivePrefetcher] DB cache check failed'
+				);
 			}
 		}
 
@@ -213,12 +221,15 @@ export class AdaptivePrefetcher {
 		// Optionally clear cache outside window
 		this.store.invalidateOutsideWindow(newIndex, strategy.windowSize * 2);
 
-		logger.debug('[AdaptivePrefetcher] Seek detected', {
-			from: this.lastAccessIndex,
-			to: newIndex,
-			pattern: this.currentPattern,
-			cancelledPrefetches: this.pendingFetches.size
-		});
+		logger.debug(
+			{
+				from: this.lastAccessIndex,
+				to: newIndex,
+				pattern: this.currentPattern,
+				cancelledPrefetches: this.pendingFetches.size
+			},
+			'[AdaptivePrefetcher] Seek detected'
+		);
 
 		this.lastAccessIndex = newIndex;
 	}
@@ -326,10 +337,13 @@ export class AdaptivePrefetcher {
 				return result.data;
 			})
 			.catch((error) => {
-				logger.debug('[AdaptivePrefetcher] Prefetch failed', {
-					index,
-					error: error instanceof Error ? error.message : 'Unknown'
-				});
+				logger.debug(
+					{
+						index,
+						error: error instanceof Error ? error.message : 'Unknown'
+					},
+					'[AdaptivePrefetcher] Prefetch failed'
+				);
 				throw error;
 			})
 			.finally(() => {

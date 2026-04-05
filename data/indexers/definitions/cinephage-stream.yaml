@@ -31,6 +31,27 @@ settings:
     placeholder: '192.168.1.100:3000'
     helpText: 'External hostname and port for streaming access. Example: 192.168.1.100:3000 or media.example.com'
 
+  - name: cinephageApiBaseUrl
+    type: text
+    label: Cinephage API Base URL
+    default: 'https://api.cinephage.net'
+    placeholder: 'https://api.cinephage.net'
+    helpText: 'Upstream API used to resolve streams. Leave as production unless you are testing another deployment.'
+
+  - name: cinephageCommit
+    type: text
+    label: Cinephage API Commit
+    default: ''
+    placeholder: 'abc123def'
+    helpText: 'Build commit sent with authenticated requests to the Cinephage API.'
+
+  - name: cinephageVersion
+    type: text
+    label: Cinephage API Version
+    default: ''
+    placeholder: '2.3.3'
+    helpText: 'Build version sent with authenticated requests to the Cinephage API.'
+
 # Protocol-specific configuration for streaming
 protocolConfig:
   streaming:

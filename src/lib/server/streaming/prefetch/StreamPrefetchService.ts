@@ -6,7 +6,7 @@
  *
  * Features:
  * - Prefetches streams for recently added library items
- * - Respects rate limits and provider health
+ * - Respects upstream rate limits and cache state
  * - Can be scheduled via monitoring scheduler
  * - Skips items with existing cache entries or negative cache
  */
@@ -18,12 +18,12 @@ import { logger } from '$lib/logging';
 import { getStreamCache } from '../cache';
 import { MultiLevelStreamCache } from '../cache/StreamCache';
 
-const streamLog = { logCategory: 'streams' as const };
+const streamLog = { logDomain: 'streams' as const };
 
 /** Maximum items to prefetch in a single run */
 const MAX_PREFETCH_ITEMS = 20;
 
-/** Delay between prefetch requests (ms) to avoid overwhelming providers */
+/** Delay between prefetch requests (ms) to avoid overwhelming the resolver */
 const PREFETCH_DELAY_MS = 2000;
 
 /** Timeout for each prefetch request (ms) */
@@ -74,10 +74,13 @@ export class StreamPrefetchService {
 				await this.delay(PREFETCH_DELAY_MS);
 			}
 		} catch (error) {
-			logger.error('Failed to prefetch recent movies', {
-				error: error instanceof Error ? error.message : String(error),
-				...streamLog
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					...streamLog
+				},
+				'Failed to prefetch recent movies'
+			);
 		}
 
 		return results;
@@ -118,10 +121,13 @@ export class StreamPrefetchService {
 				await this.delay(PREFETCH_DELAY_MS);
 			}
 		} catch (error) {
-			logger.error('Failed to prefetch recent episodes', {
-				error: error instanceof Error ? error.message : String(error),
-				...streamLog
-			});
+			logger.error(
+				{
+					error: error instanceof Error ? error.message : String(error),
+					...streamLog
+				},
+				'Failed to prefetch recent episodes'
+			);
 		}
 
 		return results;
@@ -190,13 +196,16 @@ export class StreamPrefetchService {
 
 				if (response.ok) {
 					result.success = true;
-					logger.debug('Prefetched stream', {
-						tmdbId,
-						mediaType,
-						season,
-						episode,
-						...streamLog
-					});
+					logger.debug(
+						{
+							tmdbId,
+							mediaType,
+							season,
+							episode,
+							...streamLog
+						},
+						'Prefetched stream'
+					);
 				} else {
 					result.error = `HTTP ${response.status}`;
 				}
@@ -242,13 +251,16 @@ export class StreamPrefetchService {
 			const totalCached =
 				movieResults.filter((r) => r.cached).length + episodeResults.filter((r) => r.cached).length;
 
-			logger.info('Stream prefetch cycle completed', {
-				moviesProcessed: movieResults.length,
-				episodesProcessed: episodeResults.length,
-				totalSuccess,
-				alreadyCached: totalCached,
-				...streamLog
-			});
+			logger.info(
+				{
+					moviesProcessed: movieResults.length,
+					episodesProcessed: episodeResults.length,
+					totalSuccess,
+					alreadyCached: totalCached,
+					...streamLog
+				},
+				'Stream prefetch cycle completed'
+			);
 
 			return { movies: movieResults, episodes: episodeResults };
 		} finally {

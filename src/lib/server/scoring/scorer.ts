@@ -18,7 +18,9 @@ import type {
 import { matchFormats, extractAttributes } from './matcher.js';
 import { ALL_FORMATS } from './formats/index.js';
 import { ReleaseParser } from '../indexers/parser/ReleaseParser.js';
-import { logger } from '$lib/logging';
+import { createChildLogger } from '$lib/logging';
+
+const logger = createChildLogger({ logDomain: 'indexers' as const });
 
 // Singleton parser instance
 const parser = new ReleaseParser();
@@ -64,20 +66,23 @@ export function scoreRelease(
 	const formatScoresCount = Object.keys(profile.formatScores).length;
 	if (formatScoresCount > 0 && formatScoresCount < 20) {
 		// Only log for custom profiles (small number of format scores)
-		logger.debug('[Scorer] Scoring release', {
-			releaseName: releaseName.substring(0, 50),
-			profileId: profile.id,
-			profileName: profile.name,
-			formatScoresCount,
-			formatScoresKeys: Object.keys(profile.formatScores),
-			matchedFormatIds: matchedFormats.map((f) => f.format.id),
-			scoredFormats: scoredFormats.map((f) => ({
-				id: f.format.id,
-				name: f.format.name,
-				score: f.score,
-				profileHasScore: profile.formatScores[f.format.id] !== undefined
-			}))
-		});
+		logger.debug(
+			{
+				releaseName: releaseName.substring(0, 50),
+				profileId: profile.id,
+				profileName: profile.name,
+				formatScoresCount,
+				formatScoresKeys: Object.keys(profile.formatScores),
+				matchedFormatIds: matchedFormats.map((f) => f.format.id),
+				scoredFormats: scoredFormats.map((f) => ({
+					id: f.format.id,
+					name: f.format.name,
+					score: f.score,
+					profileHasScore: profile.formatScores[f.format.id] !== undefined
+				}))
+			},
+			'[Scorer] Scoring release'
+		);
 	}
 
 	// 4. Build score breakdown by category

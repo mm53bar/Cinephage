@@ -78,6 +78,14 @@ export class CaptchaSolver implements BackgroundService {
 	 */
 	private async initialize(): Promise<void> {
 		try {
+			// Check if solver is enabled before launching Camoufox
+			const config = captchaSolverSettingsService.getConfig();
+			if (!config.enabled) {
+				this._status = 'ready';
+				logger.info('[CaptchaSolver] Disabled in settings, skipping Camoufox initialization');
+				return;
+			}
+
 			logger.info('[CaptchaSolver] Initializing with Camoufox');
 
 			// Wait for Camoufox availability check to complete
